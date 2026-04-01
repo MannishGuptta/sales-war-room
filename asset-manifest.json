@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/sales-war-room/static/css/main.e6c13ad2.css",
+    "main.js": "/sales-war-room/static/js/main.7bff475e.js",
+    "static/js/453.304562fd.chunk.js": "/sales-war-room/static/js/453.304562fd.chunk.js",
+    "index.html": "/sales-war-room/index.html",
+    "main.e6c13ad2.css.map": "/sales-war-room/static/css/main.e6c13ad2.css.map",
+    "main.7bff475e.js.map": "/sales-war-room/static/js/main.7bff475e.js.map",
+    "453.304562fd.chunk.js.map": "/sales-war-room/static/js/453.304562fd.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.e6c13ad2.css",
+    "static/js/main.7bff475e.js"
+  ]
+}
