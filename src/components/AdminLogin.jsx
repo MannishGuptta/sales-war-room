@@ -1,41 +1,15 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
 
-const RMLogin = ({ onLogin }) => {
-  const [selectedRM, setSelectedRM] = useState('')
+const AdminLogin = ({ onLogin }) => {
+  const [email, setEmail] = useState('chaudhrymannish@gmail.com')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [rmsList, setRmsList] = useState([])
-  const [loadingRMs, setLoadingRMs] = useState(true)
-
-  // Load RMs from Supabase on component mount
-  useState(() => {
-    loadRMs()
-  }, [])
-
-  const loadRMs = async () => {
-    try {
-      setLoadingRMs(true)
-      const { data, error } = await supabase
-        .from('rms')
-        .select('id, name, email')
-        .order('name')
-      
-      if (error) throw error
-      
-      setRmsList(data || [])
-    } catch (err) {
-      console.error('Error loading RMs:', err)
-      setError('Failed to load RMs. Please refresh the page.')
-    } finally {
-      setLoadingRMs(false)
-    }
-  }
 
   const handleLogin = async () => {
-    if (!selectedRM) {
-      setError('Please select an RM')
+    if (!email || !password) {
+      setError('Please enter email and password')
       return
     }
     
@@ -43,28 +17,32 @@ const RMLogin = ({ onLogin }) => {
     setError('')
     
     try {
-      // Query Supabase for the selected RM
-      const { data, error } = await supabase
-        .from('rms')
-        .select('id, name, password_hash')
-        .eq('id', parseInt(selectedRM))
-        .single()
+      // Sign in with Supabase Auth
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password
+      })
       
       if (error) throw error
       
-      // In production, you should compare hashed passwords
-      // For demo, we're using plain text comparison
-      // You should implement proper password hashing (bcrypt)
-      const storedPassword = data.password_hash || 'rm123'
+      // Check if user is admin
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', data.user.id)
+        .single()
       
-      if (password === storedPassword) {
-        onLogin(selectedRM)
+      if (profileError) throw profileError
+      
+      if (profile?.is_admin) {
+        onLogin()
       } else {
-        setError('Invalid password')
+        setError('Not authorized as admin')
+        await supabase.auth.signOut()
       }
     } catch (err) {
       console.error('Login error:', err)
-      setError('Login failed. Please try again.')
+      setError('Invalid email or password')
     } finally {
       setLoading(false)
     }
@@ -76,7 +54,7 @@ const RMLogin = ({ onLogin }) => {
       justifyContent: 'center',
       alignItems: 'center',
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)',
       fontFamily: 'Arial, sans-serif'
     },
     loginBox: {
@@ -109,14 +87,6 @@ const RMLogin = ({ onLogin }) => {
       fontWeight: '500',
       color: '#333'
     },
-    select: {
-      width: '100%',
-      padding: '10px',
-      border: '1px solid #ddd',
-      borderRadius: '6px',
-      fontSize: '14px',
-      backgroundColor: 'white'
-    },
     input: {
       width: '100%',
       padding: '10px',
@@ -127,14 +97,13 @@ const RMLogin = ({ onLogin }) => {
     button: {
       width: '100%',
       padding: '12px',
-      background: '#2196f3',
+      background: '#2a5298',
       color: 'white',
       border: 'none',
       borderRadius: '6px',
       fontSize: '16px',
       fontWeight: 'bold',
-      cursor: 'pointer',
-      transition: 'all 0.3s ease'
+      cursor: 'pointer'
     },
     buttonDisabled: {
       background: '#ccc',
@@ -145,13 +114,7 @@ const RMLogin = ({ onLogin }) => {
       color: '#721c24',
       padding: '10px',
       borderRadius: '4px',
-      marginBottom: '20px',
-      fontSize: '14px'
-    },
-    loadingText: {
-      textAlign: 'center',
-      color: '#666',
-      padding: '20px'
+      marginBottom: '20px'
     },
     demoNote: {
       marginTop: '20px',
@@ -164,37 +127,23 @@ const RMLogin = ({ onLogin }) => {
     }
   }
 
-  if (loadingRMs) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.loginBox}>
-          <h1 style={styles.title}>👤 RM Portal</h1>
-          <div style={styles.loadingText}>Loading RMs...</div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div style={styles.container}>
       <div style={styles.loginBox}>
-        <h1 style={styles.title}>👤 RM Portal</h1>
-        <p style={styles.subtitle}>Login to access your dashboard</p>
+        <h1 style={styles.title}>🔐 Admin War Room</h1>
+        <p style={styles.subtitle}>Enter your credentials to access</p>
         
         {error && <div style={styles.error}>{error}</div>}
         
         <div style={styles.formGroup}>
-          <label style={styles.label}>Select RM</label>
-          <select
-            style={styles.select}
-            value={selectedRM}
-            onChange={(e) => setSelectedRM(e.target.value)}
-          >
-            <option value="">Select your profile</option>
-            {rmsList.map(rm => (
-              <option key={rm.id} value={rm.id}>{rm.name} - {rm.email}</option>
-            ))}
-          </select>
+          <label style={styles.label}>Email</label>
+          <input
+            type="email"
+            style={styles.input}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="admin@example.com"
+          />
         </div>
         
         <div style={styles.formGroup}>
@@ -217,16 +166,15 @@ const RMLogin = ({ onLogin }) => {
           onClick={handleLogin}
           disabled={loading}
         >
-          {loading ? 'Logging in...' : 'Login to Dashboard'}
+          {loading ? 'Logging in...' : 'Login to Admin Dashboard'}
         </button>
         
         <div style={styles.demoNote}>
-          🔐 Demo Password: <strong>rm123</strong> (for all RMs)<br />
-          You can change your password after login
+          🔐 Use the password you set when creating the user in Supabase
         </div>
       </div>
     </div>
   )
 }
 
-export default RMLogin
+export default AdminLogin

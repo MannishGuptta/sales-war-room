@@ -11,11 +11,13 @@ import AttendanceMonitor from '../components/AttendanceMonitor'
 import TLManagement from '../components/TLManagement'
 import AssignmentManagement from '../components/AssignmentManagement'
 import TLTargetManagement from '../components/TLTargetManagement'
-import { mockData, teamLeaders as initialTeamLeaders } from '../data/mockData'
+import ChangePassword from '../components/ChangePassword'
+import { supabase } from '../supabaseClient'
+import { mockData } from '../data/mockData'
 import { calculateMetrics } from '../utils/kpiEngine'
 import { processAllRMs, generateInterventions } from '../engines/escalationEngine'
 
-const WarRoom = () => {
+const WarRoom = ({ onLogout }) => {
   const [metrics, setMetrics] = useState(null)
   const [rms, setRms] = useState([])
   const [interventions, setInterventions] = useState([])
@@ -30,71 +32,128 @@ const WarRoom = () => {
   const [showTLManagement, setShowTLManagement] = useState(false)
   const [showAssignmentMgmt, setShowAssignmentMgmt] = useState(false)
   const [showTLTargets, setShowTLTargets] = useState(false)
+  const [showChangePassword, setShowChangePassword] = useState(false)
   const [meetingStats, setMeetingStats] = useState({})
   const [teamLeadersList, setTeamLeadersList] = useState([])
   const [allCPs, setAllCPs] = useState([])
+  const [currentWeek, setCurrentWeek] = useState(1)
+  const [currentMonth, setCurrentMonth] = useState('')
+  const [currentYear, setCurrentYear] = useState(2024)
 
-  const loadData = useCallback(() => {
+  // Load current date info
+  useEffect(() => {
+    const now = new Date()
+    setCurrentMonth(now.toLocaleString('default', { month: 'long' }))
+    setCurrentYear(now.getFullYear())
+    const weekOfMonth = Math.ceil(now.getDate() / 7)
+    setCurrentWeek(Math.min(weekOfMonth, 4))
+  }, [])
+
+  // Load RMs from Supabase
+  const loadData = useCallback(async () => {
     try {
-      const processedRMs = processAllRMs(mockData.rms, mockData.currentWeek)
+      setLoading(true)
+      
+      const { data: rmsData, error: rmsError } = await supabase
+        .from('rms')
+        .select('*')
+        .order('id')
+      
+      if (rmsError) throw rmsError
+      
+      let rmsToUse = rmsData || []
+      if (rmsToUse.length === 0) {
+        console.log('No data in database, using mock data')
+        rmsToUse = mockData.rms
+      }
+      
+      const { data: tlData, error: tlError } = await supabase
+        .from('team_leaders')
+        .select('*')
+        .order('id')
+      
+      if (tlError) console.warn('Error fetching team leaders:', tlError.message)
+      
+      const { data: cpsData, error: cpsError } = await supabase
+        .from('channel_partners')
+        .select('*')
+      
+      if (cpsError) console.warn('Error fetching channel partners:', cpsError.message)
+      
+      const processedRMs = processAllRMs(rmsToUse, currentWeek)
+      setRms(processedRMs)
+      
+      const updatedMetrics = calculateMetrics(processedRMs)
+      setMetrics(updatedMetrics)
+      
+      const activeInterventions = generateInterventions(processedRMs)
+      setInterventions(activeInterventions)
+      
+      setTeamLeadersList(tlData || [])
+      setAllCPs(cpsData || [])
+      setLastUpdated(new Date())
+      
+    } catch (error) {
+      console.error('Error loading WarRoom:', error)
+      const processedRMs = processAllRMs(mockData.rms, currentWeek)
       setRms(processedRMs)
       const updatedMetrics = calculateMetrics(processedRMs)
       setMetrics(updatedMetrics)
       const activeInterventions = generateInterventions(processedRMs)
       setInterventions(activeInterventions)
-      setLastUpdated(new Date())
-      setLoading(false)
-    } catch (error) {
-      console.error('Error loading WarRoom:', error)
+    } finally {
       setLoading(false)
     }
-  }, [])
+  }, [currentWeek])
 
-  const loadAllCPs = useCallback(() => {
-    const allCPsList = []
-    mockData.rms.forEach(rm => {
-      const storedCPs = localStorage.getItem(`cps_${rm.id}`)
-      if (storedCPs) {
-        const cps = JSON.parse(storedCPs)
-        allCPsList.push(...cps.map(cp => ({ ...cp, rmName: rm.name })))
-      }
-    })
-    setAllCPs(allCPsList)
-  }, [])
+  // Refresh all data function
+  const refreshAllData = async () => {
+    await loadData()
+    await loadMeetingStats()
+  }
 
-  const loadMeetingStats = useCallback(() => {
-    const stats = {}
-    mockData.rms.forEach(rm => {
-      const storedMeetings = localStorage.getItem(`meetings_${rm.id}`)
-      let meetings = []
-      if (storedMeetings) {
-        meetings = JSON.parse(storedMeetings)
+  // Load meeting stats
+  const loadMeetingStats = useCallback(async () => {
+    try {
+      const { data: meetingsData, error } = await supabase
+        .from('meetings')
+        .select('*, rms(name)')
+      
+      if (error) {
+        console.warn('Meetings table not found:', error.message)
+        setMeetingStats({})
+        return
       }
+      
+      const stats = {}
       const today = new Date().toISOString().split('T')[0]
-      stats[rm.id] = {
-        name: rm.name,
-        total: meetings.length,
-        upcoming: meetings.filter(m => m.status === 'scheduled' && m.date >= today).length
-      }
-    })
-    setMeetingStats(stats)
-  }, [])
-
-  useEffect(() => {
-    const storedTL = localStorage.getItem('teamLeaders')
-    if (storedTL) {
-      setTeamLeadersList(JSON.parse(storedTL))
-    } else {
-      setTeamLeadersList(initialTeamLeaders)
-      localStorage.setItem('teamLeaders', JSON.stringify(initialTeamLeaders))
+      
+      meetingsData?.forEach(meeting => {
+        const rmId = meeting.rm_id
+        if (!stats[rmId]) {
+          stats[rmId] = {
+            name: meeting.rms?.name || `RM ${rmId}`,
+            total: 0,
+            upcoming: 0
+          }
+        }
+        stats[rmId].total++
+        if (meeting.meeting_date >= today && meeting.status === 'scheduled') {
+          stats[rmId].upcoming++
+        }
+      })
+      
+      setMeetingStats(stats)
+    } catch (error) {
+      console.error('Error loading meeting stats:', error)
+      setMeetingStats({})
     }
   }, [])
 
   useEffect(() => {
     loadData()
     loadMeetingStats()
-    loadAllCPs()
-  }, [loadData, loadMeetingStats, loadAllCPs])
+  }, [loadData, loadMeetingStats])
 
   const exportToCSV = () => {
     const exportData = rms.map(rm => ({
@@ -120,12 +179,7 @@ const WarRoom = () => {
   }
 
   const handleRefresh = () => {
-    setLoading(true)
-    setTimeout(() => {
-      loadData()
-      loadMeetingStats()
-      loadAllCPs()
-    }, 500)
+    refreshAllData()
   }
 
   const handleRMSummaryClick = (rm) => {
@@ -169,6 +223,8 @@ const WarRoom = () => {
     activeTab: { color: '#2196f3', borderBottom: '3px solid #2196f3', marginBottom: '-2px' },
     exportBtn: { backgroundColor: '#28a745', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' },
     refreshBtn: { backgroundColor: '#17a2b8', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' },
+    syncBtn: { backgroundColor: '#6f42c1', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' },
+    changePasswordBtn: { backgroundColor: '#ffc107', color: '#333', padding: '10px 20px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' },
     lastUpdated: { fontSize: '12px', color: '#999', marginLeft: '10px' },
     loading: { textAlign: 'center', padding: '50px', fontSize: '18px', color: '#666' },
     statsBar: { display: 'flex', gap: '20px', marginBottom: '20px', padding: '10px', background: '#f8f9fa', borderRadius: '8px', fontSize: '13px', flexWrap: 'wrap' },
@@ -207,11 +263,12 @@ const WarRoom = () => {
         <div style={styles.headerRight}>
           <button onClick={exportToCSV} style={styles.exportBtn}>📊 Export to CSV</button>
           <button onClick={handleRefresh} style={styles.refreshBtn}>🔄 Refresh</button>
+          <button onClick={refreshAllData} style={styles.syncBtn}>🔄 Sync with DB</button>
+          <button onClick={() => setShowChangePassword(true)} style={styles.changePasswordBtn}>🔐 Change Password</button>
           <span style={styles.lastUpdated}>Last updated: {lastUpdated.toLocaleTimeString()}</span>
         </div>
       </div>
 
-      {/* Tabs */}
       <div style={styles.tabs}>
         <button style={{ ...styles.tab, ...(activeTab === 'dashboard' && !showMasterData && !showAIPredictions && !showAttendanceMonitor && !showTLManagement && !showAssignmentMgmt && !showTLTargets ? styles.activeTab : {}) }} onClick={() => { setActiveTab('dashboard'); setShowMasterData(false); setShowAIPredictions(false); setShowAttendanceMonitor(false); setShowTLManagement(false); setShowAssignmentMgmt(false); setShowTLTargets(false); }}>📊 Dashboard</button>
         <button style={{ ...styles.tab, ...(activeTab === 'targets' && !showMasterData && !showAIPredictions && !showAttendanceMonitor && !showTLManagement && !showAssignmentMgmt && !showTLTargets ? styles.activeTab : {}) }} onClick={() => { setActiveTab('targets'); setShowMasterData(false); setShowAIPredictions(false); setShowAttendanceMonitor(false); setShowTLManagement(false); setShowAssignmentMgmt(false); setShowTLTargets(false); }}>🎯 Set Targets</button>
@@ -229,7 +286,7 @@ const WarRoom = () => {
           teamLeaders={teamLeadersList}
           onUpdate={(updatedTL) => {
             setTeamLeadersList(updatedTL)
-            localStorage.setItem('teamLeaders', JSON.stringify(updatedTL))
+            refreshAllData()
           }}
           onClose={() => setShowTLTargets(false)}
         />
@@ -241,9 +298,8 @@ const WarRoom = () => {
           onUpdate={(updatedData) => {
             if (updatedData.teamLeaders) {
               setTeamLeadersList(updatedData.teamLeaders)
-              localStorage.setItem('teamLeaders', JSON.stringify(updatedData.teamLeaders))
             }
-            loadAllCPs()
+            refreshAllData()
           }}
           onClose={() => setShowAssignmentMgmt(false)}
         />
@@ -253,21 +309,29 @@ const WarRoom = () => {
           rms={rms} 
           onUpdate={(updatedTL) => { 
             setTeamLeadersList(updatedTL); 
-            localStorage.setItem('teamLeaders', JSON.stringify(updatedTL));
+            refreshAllData()
           }} 
           onClose={() => setShowTLManagement(false)} 
         />
       ) : showAttendanceMonitor ? (
         <AttendanceMonitor onClose={() => setShowAttendanceMonitor(false)} />
       ) : showAIPredictions ? (
-        <AIPredictions rms={rms} currentWeek={mockData.currentWeek} onClose={() => setShowAIPredictions(false)} />
+        <AIPredictions rms={rms} currentWeek={currentWeek} onClose={() => setShowAIPredictions(false)} />
       ) : showMasterData ? (
-        <MasterDataManagement rms={rms} cps={[]} sales={[]} onUpdateData={() => {}} onClose={() => setShowMasterData(false)} />
+        <MasterDataManagement 
+          rms={rms} 
+          cps={allCPs} 
+          sales={[]} 
+          onUpdateData={async () => {
+            await refreshAllData()
+          }} 
+          onClose={() => setShowMasterData(false)} 
+        />
       ) : activeTab === 'dashboard' ? (
         <>
           <div style={styles.weeklyHeader}>
-            <div style={styles.monthInfo}><strong>📅 {mockData.currentMonth} {mockData.currentYear}</strong><span style={{ marginLeft: '15px', opacity: 0.9 }}>Week {mockData.currentWeek} of 4 | Monthly Progress: {metrics.revenueConversion || 0}%</span></div>
-            <div><span style={styles.weekBadge}>📍 Week {mockData.currentWeek} Monitoring Active</span></div>
+            <div style={styles.monthInfo}><strong>📅 {currentMonth} {currentYear}</strong><span style={{ marginLeft: '15px', opacity: 0.9 }}>Week {currentWeek} of 4 | Monthly Progress: {metrics.revenueConversion || 0}%</span></div>
+            <div><span style={styles.weekBadge}>📍 Week {currentWeek} Monitoring Active</span></div>
           </div>
 
           <div style={styles.statsBar}>
@@ -317,13 +381,33 @@ const WarRoom = () => {
           </div>
         </div>
       ) : (
-        <TargetManagement rms={rms} onUpdateTargets={() => {}} onClose={() => setActiveTab('dashboard')} />
+        <TargetManagement 
+          rms={rms} 
+          onUpdateTargets={async () => {
+            await refreshAllData()
+          }} 
+          onClose={() => setActiveTab('dashboard')} 
+        />
       )}
 
       {showWeeklyProgress && selectedRM && (
         <div style={styles.progressOverlay} onClick={handleCloseWeeklyProgress}>
           <div style={styles.progressModal} onClick={(e) => e.stopPropagation()}>
             <WeeklyProgress rm={selectedRM} onClose={handleCloseWeeklyProgress} />
+          </div>
+        </div>
+      )}
+
+      {showChangePassword && (
+        <div style={styles.progressOverlay} onClick={() => setShowChangePassword(false)}>
+          <div style={styles.progressModal} onClick={(e) => e.stopPropagation()}>
+            <ChangePassword 
+              userType="admin"
+              userId="admin"
+              userName="Admin"
+              onClose={() => setShowChangePassword(false)}
+              onPasswordChanged={() => {}}
+            />
           </div>
         </div>
       )}

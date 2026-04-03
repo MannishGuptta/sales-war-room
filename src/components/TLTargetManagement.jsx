@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { supabase } from '../supabaseClient'
 
 const TLTargetManagement = ({ teamLeaders, onUpdate, onClose }) => {
   const [tlList, setTlList] = useState(teamLeaders || [])
@@ -6,6 +7,7 @@ const TLTargetManagement = ({ teamLeaders, onUpdate, onClose }) => {
   const [editValues, setEditValues] = useState({})
   const [selectedTL, setSelectedTL] = useState(null)
   const [showTargetHistory, setShowTargetHistory] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   const formatRupees = (amount) => {
     return new Intl.NumberFormat('en-IN', {
@@ -24,7 +26,8 @@ const TLTargetManagement = ({ teamLeaders, onUpdate, onClose }) => {
     })
   }
 
-  const handleSaveTarget = (id) => {
+  const handleSaveTarget = async (id) => {
+    setSaving(true)
     const updatedList = tlList.map(tl =>
       tl.id === id ? {
         ...tl,
@@ -37,8 +40,26 @@ const TLTargetManagement = ({ teamLeaders, onUpdate, onClose }) => {
     setTlList(updatedList)
     setEditingId(null)
     setEditValues({})
-    onUpdate(updatedList)
-    alert('Target updated successfully!')
+    
+    const tlToUpdate = updatedList.find(tl => tl.id === id)
+    try {
+      const { error } = await supabase
+        .from('team_leaders')
+        .update({
+          monthly_target: tlToUpdate.monthlyTarget,
+          monthly_achieved: tlToUpdate.monthlyAchieved
+        })
+        .eq('id', id)
+      
+      if (error) throw error
+      alert('Target updated successfully!')
+      onUpdate(updatedList)
+    } catch (error) {
+      console.error('Error saving TL targets:', error)
+      alert('Error saving targets. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const getStatusColor = (achievement) => {
@@ -64,165 +85,28 @@ const TLTargetManagement = ({ teamLeaders, onUpdate, onClose }) => {
       paddingBottom: '16px',
       borderBottom: '2px solid #f0f0f0'
     },
-    title: {
-      fontSize: '24px',
-      fontWeight: 'bold',
-      color: '#333',
-      margin: 0
-    },
-    subtitle: {
-      fontSize: '14px',
-      color: '#666',
-      marginTop: '5px'
-    },
-    closeBtn: {
-      background: '#dc3545',
-      color: 'white',
-      border: 'none',
-      padding: '8px 16px',
-      borderRadius: '6px',
-      cursor: 'pointer',
-      fontSize: '14px',
-      fontWeight: 'bold'
-    },
-    statsGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-      gap: '20px',
-      marginBottom: '30px'
-    },
-    statCard: {
-      background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)',
-      color: 'white',
-      padding: '20px',
-      borderRadius: '12px',
-      textAlign: 'center'
-    },
-    statLabel: {
-      fontSize: '13px',
-      opacity: 0.9,
-      marginBottom: '8px',
-      textTransform: 'uppercase'
-    },
-    statValue: {
-      fontSize: '28px',
-      fontWeight: 'bold'
-    },
-    table: {
-      width: '100%',
-      borderCollapse: 'collapse',
-      marginTop: '20px'
-    },
-    th: {
-      border: '1px solid #ddd',
-      padding: '12px',
-      background: '#f8f9fa',
-      textAlign: 'left',
-      fontWeight: 'bold',
-      fontSize: '14px'
-    },
-    td: {
-      border: '1px solid #ddd',
-      padding: '12px',
-      textAlign: 'left',
-      fontSize: '14px'
-    },
-    input: {
-      padding: '8px',
-      border: '1px solid #ddd',
-      borderRadius: '4px',
-      fontSize: '14px',
-      width: '120px'
-    },
-    editBtn: {
-      background: '#2196f3',
-      color: 'white',
-      border: 'none',
-      padding: '5px 10px',
-      borderRadius: '4px',
-      cursor: 'pointer',
-      marginRight: '5px',
-      fontSize: '12px'
-    },
-    saveBtn: {
-      background: '#28a745',
-      color: 'white',
-      border: 'none',
-      padding: '5px 10px',
-      borderRadius: '4px',
-      cursor: 'pointer',
-      marginRight: '5px',
-      fontSize: '12px'
-    },
-    cancelBtn: {
-      background: '#6c757d',
-      color: 'white',
-      border: 'none',
-      padding: '5px 10px',
-      borderRadius: '4px',
-      cursor: 'pointer',
-      fontSize: '12px'
-    },
-    viewBtn: {
-      background: '#17a2b8',
-      color: 'white',
-      border: 'none',
-      padding: '5px 10px',
-      borderRadius: '4px',
-      cursor: 'pointer',
-      fontSize: '12px'
-    },
-    progressBar: {
-      height: '8px',
-      background: '#e0e0e0',
-      borderRadius: '4px',
-      overflow: 'hidden',
-      marginTop: '8px'
-    },
-    progressFill: {
-      height: '100%',
-      borderRadius: '4px',
-      transition: 'width 0.3s ease'
-    },
-    modalOverlay: {
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0,0,0,0.5)',
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      zIndex: 1000
-    },
-    modalContent: {
-      background: 'white',
-      borderRadius: '12px',
-      padding: '24px',
-      maxWidth: '500px',
-      width: '90%'
-    },
-    modalHeader: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: '20px',
-      paddingBottom: '10px',
-      borderBottom: '2px solid #f0f0f0'
-    },
-    modalTitle: {
-      fontSize: '18px',
-      fontWeight: 'bold'
-    },
-    modalCloseBtn: {
-      background: '#dc3545',
-      color: 'white',
-      border: 'none',
-      padding: '4px 10px',
-      borderRadius: '4px',
-      cursor: 'pointer'
-    }
+    title: { fontSize: '24px', fontWeight: 'bold', color: '#333', margin: 0 },
+    subtitle: { fontSize: '14px', color: '#666', marginTop: '5px' },
+    closeBtn: { background: '#dc3545', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' },
+    statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '30px' },
+    statCard: { background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)', color: 'white', padding: '20px', borderRadius: '12px', textAlign: 'center' },
+    statLabel: { fontSize: '13px', opacity: 0.9, marginBottom: '8px', textTransform: 'uppercase' },
+    statValue: { fontSize: '28px', fontWeight: 'bold' },
+    table: { width: '100%', borderCollapse: 'collapse', marginTop: '20px' },
+    th: { border: '1px solid #ddd', padding: '12px', background: '#f8f9fa', textAlign: 'left', fontWeight: 'bold', fontSize: '14px' },
+    td: { border: '1px solid #ddd', padding: '12px', textAlign: 'left', fontSize: '14px' },
+    input: { padding: '8px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '14px', width: '120px' },
+    editBtn: { background: '#2196f3', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', marginRight: '5px', fontSize: '12px' },
+    saveBtn: { background: '#28a745', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', marginRight: '5px', fontSize: '12px' },
+    cancelBtn: { background: '#6c757d', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' },
+    viewBtn: { background: '#17a2b8', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' },
+    progressBar: { height: '8px', background: '#e0e0e0', borderRadius: '4px', overflow: 'hidden', marginTop: '8px' },
+    progressFill: { height: '100%', borderRadius: '4px', transition: 'width 0.3s ease' },
+    modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
+    modalContent: { background: 'white', borderRadius: '12px', padding: '24px', maxWidth: '500px', width: '90%' },
+    modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '10px', borderBottom: '2px solid #f0f0f0' },
+    modalTitle: { fontSize: '18px', fontWeight: 'bold' },
+    modalCloseBtn: { background: '#dc3545', color: 'white', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer' }
   }
 
   const totalTarget = tlList.reduce((sum, tl) => sum + tl.monthlyTarget, 0)
@@ -283,57 +167,35 @@ const TLTargetManagement = ({ teamLeaders, onUpdate, onClose }) => {
                   <td style={styles.td}>{tl.team?.length || 0}</td>
                   <td style={styles.td}>
                     {editingId === tl.id ? (
-                      <input
-                        type="number"
-                        style={styles.input}
-                        value={editValues.monthlyTarget || ''}
-                        onChange={(e) => setEditValues({ ...editValues, monthlyTarget: e.target.value })}
-                      />
+                      <input type="number" style={styles.input} value={editValues.monthlyTarget || ''} onChange={(e) => setEditValues({ ...editValues, monthlyTarget: e.target.value })} />
                     ) : formatRupees(tl.monthlyTarget)}
                   </td>
                   <td style={styles.td}>
                     {editingId === tl.id ? (
-                      <input
-                        type="number"
-                        style={styles.input}
-                        value={editValues.monthlyAchieved || ''}
-                        onChange={(e) => setEditValues({ ...editValues, monthlyAchieved: e.target.value })}
-                      />
+                      <input type="number" style={styles.input} value={editValues.monthlyAchieved || ''} onChange={(e) => setEditValues({ ...editValues, monthlyAchieved: e.target.value })} />
                     ) : formatRupees(tl.monthlyAchieved)}
                   </td>
                   <td style={styles.td}>{formatRupees(tl.monthlyGap)}</td>
                   <td style={styles.td}>
-                    <span style={{ color: statusColor, fontWeight: 'bold' }}>
-                      {achievementPercent.toFixed(1)}%
-                    </span>
+                    <span style={{ color: statusColor, fontWeight: 'bold' }}>{achievementPercent.toFixed(1)}%</span>
                     <div style={styles.progressBar}>
                       <div style={{ ...styles.progressFill, width: `${Math.min(achievementPercent, 100)}%`, background: statusColor }} />
                     </div>
                   </td>
                   <td style={styles.td}>
-                    <span style={{
-                      display: 'inline-block',
-                      width: '10px',
-                      height: '10px',
-                      borderRadius: '50%',
-                      background: statusColor,
-                      marginRight: '8px'
-                    }}></span>
+                    <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: statusColor, marginRight: '8px' }}></span>
                     {achievementPercent >= 75 ? 'Excellent' : achievementPercent >= 50 ? 'On Track' : 'Needs Attention'}
                   </td>
                   <td style={styles.td}>
                     {editingId === tl.id ? (
                       <>
-                        <button onClick={() => handleSaveTarget(tl.id)} style={styles.saveBtn}>Save</button>
+                        <button onClick={() => handleSaveTarget(tl.id)} disabled={saving} style={styles.saveBtn}>Save</button>
                         <button onClick={() => setEditingId(null)} style={styles.cancelBtn}>Cancel</button>
                       </>
                     ) : (
                       <>
                         <button onClick={() => handleEditTarget(tl)} style={styles.editBtn}>Edit</button>
-                        <button onClick={() => {
-                          setSelectedTL(tl)
-                          setShowTargetHistory(true)
-                        }} style={styles.viewBtn}>History</button>
+                        <button onClick={() => { setSelectedTL(tl); setShowTargetHistory(true); }} style={styles.viewBtn}>History</button>
                       </>
                     )}
                   </td>

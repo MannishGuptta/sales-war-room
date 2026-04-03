@@ -4,34 +4,64 @@ import RMLogin from './components/RMLogin'
 import RMDashboard from './components/RMDashboard'
 import TeamLeaderLogin from './components/TeamLeaderLogin'
 import TeamLeaderDashboard from './components/TeamLeaderDashboard'
+import LandingPage from './components/LandingPage'
+import AdminLogin from './components/AdminLogin'
 
 function App() {
-  const [userType, setUserType] = useState('warroom')
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [currentRMId, setCurrentRMId] = useState(null)
-  const [currentTLId, setCurrentTLId] = useState(null)
+  const [appState, setAppState] = useState({
+    currentView: 'landing', // landing, admin, rm, tl, warroom, rmDashboard, tlDashboard
+    isAdminLoggedIn: false,
+    isRMLoggedIn: false,
+    isTLLoggedIn: false,
+    currentRMId: null,
+    currentTLId: null
+  })
+
+  const handlePortalSelect = (portal) => {
+    if (portal === 'admin') {
+      setAppState({ ...appState, currentView: 'admin' })
+    } else if (portal === 'rm') {
+      setAppState({ ...appState, currentView: 'rm' })
+    } else if (portal === 'tl') {
+      setAppState({ ...appState, currentView: 'tl' })
+    }
+  }
+
+  const handleAdminLogin = () => {
+    setAppState({ ...appState, isAdminLoggedIn: true, currentView: 'warroom' })
+  }
 
   const handleRMLogin = (rmId) => {
-    setCurrentRMId(rmId)
-    setIsLoggedIn(true)
-    setUserType('rm')
+    setAppState({ ...appState, isRMLoggedIn: true, currentRMId: rmId, currentView: 'rmDashboard' })
   }
 
   const handleTLLogin = (tlId) => {
-    setCurrentTLId(tlId)
-    setIsLoggedIn(true)
-    setUserType('tl')
+    setAppState({ ...appState, isTLLoggedIn: true, currentTLId: tlId, currentView: 'tlDashboard' })
   }
 
   const handleLogout = () => {
-    setIsLoggedIn(false)
-    setCurrentRMId(null)
-    setCurrentTLId(null)
-    setUserType('warroom')
+    setAppState({
+      currentView: 'landing',
+      isAdminLoggedIn: false,
+      isRMLoggedIn: false,
+      isTLLoggedIn: false,
+      currentRMId: null,
+      currentTLId: null
+    })
   }
 
-  // Admin War Room View
-  if (userType === 'warroom') {
+  // Landing Page
+  if (appState.currentView === 'landing') {
+    return <LandingPage onSelectPortal={handlePortalSelect} />
+  }
+
+  // Admin Login Page
+  if (appState.currentView === 'admin') {
+    return <AdminLogin onLogin={handleAdminLogin} />
+  }
+
+  // Admin War Room
+  if (appState.currentView === 'warroom' && appState.isAdminLoggedIn) {
     return (
       <div>
         <div style={{
@@ -43,130 +73,51 @@ function App() {
           gap: '10px'
         }}>
           <button
-            onClick={() => setUserType('rm')}
+            onClick={handleLogout}
             style={{
               padding: '8px 16px',
-              background: '#28a745',
+              background: '#dc3545',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              fontSize: '14px'
             }}
           >
-            👤 RM Portal
-          </button>
-          <button
-            onClick={() => setUserType('tl')}
-            style={{
-              padding: '8px 16px',
-              background: '#ff9800',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            👥 Team Leader Portal
+            🚪 Logout
           </button>
         </div>
-        <WarRoom />
+        <WarRoom onLogout={handleLogout} />
       </div>
     )
   }
 
-  // RM Portal View
-  if (userType === 'rm') {
-    if (!isLoggedIn) {
-      return <RMLogin onLogin={handleRMLogin} />
-    }
+  // RM Portal - Login
+  if (appState.currentView === 'rm') {
+    return <RMLogin onLogin={handleRMLogin} />
+  }
+
+  // RM Dashboard
+  if (appState.currentView === 'rmDashboard' && appState.isRMLoggedIn) {
     return (
-      <div>
-        <div style={{
-          position: 'fixed',
-          top: '10px',
-          right: '20px',
-          zIndex: 1000,
-          display: 'flex',
-          gap: '10px'
-        }}>
-          <button
-            onClick={() => setUserType('warroom')}
-            style={{
-              padding: '8px 16px',
-              background: '#6c757d',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            🔐 Admin War Room
-          </button>
-          <button
-            onClick={() => setUserType('tl')}
-            style={{
-              padding: '8px 16px',
-              background: '#ff9800',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            👥 Team Leader
-          </button>
-        </div>
-        <RMDashboard rmId={currentRMId} onLogout={handleLogout} />
-      </div>
+      <RMDashboard rmId={appState.currentRMId} onLogout={handleLogout} />
     )
   }
 
-  // Team Leader Portal View
-  if (userType === 'tl') {
-    if (!isLoggedIn) {
-      return <TeamLeaderLogin onLogin={handleTLLogin} />
-    }
+  // Team Leader Portal - Login
+  if (appState.currentView === 'tl') {
+    return <TeamLeaderLogin onLogin={handleTLLogin} />
+  }
+
+  // Team Leader Dashboard
+  if (appState.currentView === 'tlDashboard' && appState.isTLLoggedIn) {
     return (
-      <div>
-        <div style={{
-          position: 'fixed',
-          top: '10px',
-          right: '20px',
-          zIndex: 1000,
-          display: 'flex',
-          gap: '10px'
-        }}>
-          <button
-            onClick={() => setUserType('warroom')}
-            style={{
-              padding: '8px 16px',
-              background: '#6c757d',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            🔐 Admin War Room
-          </button>
-          <button
-            onClick={() => setUserType('rm')}
-            style={{
-              padding: '8px 16px',
-              background: '#28a745',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            👤 RM Portal
-          </button>
-        </div>
-        <TeamLeaderDashboard tlId={currentTLId} onLogout={handleLogout} />
-      </div>
+      <TeamLeaderDashboard tlId={appState.currentTLId} onLogout={handleLogout} />
     )
   }
+
+  // Fallback to landing
+  return <LandingPage onSelectPortal={handlePortalSelect} />
 }
 
 export default App

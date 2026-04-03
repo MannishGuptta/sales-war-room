@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { mockData } from '../data/mockData'
+import { supabase } from '../supabaseClient'
 import { calculateMetrics } from '../utils/kpiEngine'
 import { processAllRMs, generateInterventions } from '../engines/escalationEngine'
 import MeetingScheduler from './MeetingScheduler'
@@ -7,6 +8,7 @@ import CPOnboardingForm from './CPOnboardingForm'
 import AddSaleForm from './AddSaleForm'
 import SalesDatabase from './SalesDatabase'
 import MeetingDatabase from './MeetingDatabase'
+import ChangePassword from './ChangePassword'
 
 const RMDashboard = ({ rmId, onLogout }) => {
   const [rmData, setRmData] = useState(null)
@@ -14,16 +16,13 @@ const RMDashboard = ({ rmId, onLogout }) => {
   const [interventions, setInterventions] = useState([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
-  const [showAddCP, setShowAddCP] = useState(false)
-  const [showAddSale, setShowAddSale] = useState(false)
   const [showCheckIn, setShowCheckIn] = useState(false)
   const [showMeetingScheduler, setShowMeetingScheduler] = useState(false)
   const [showCPForm, setShowCPForm] = useState(false)
   const [showSaleForm, setShowSaleForm] = useState(false)
   const [showSalesDB, setShowSalesDB] = useState(false)
   const [showMeetingDB, setShowMeetingDB] = useState(false)
-  const [newCP, setNewCP] = useState({ name: '', status: 'active' })
-  const [newSale, setNewSale] = useState({ cpId: '', amount: '', date: new Date().toISOString().split('T')[0] })
+  const [showChangePassword, setShowChangePassword] = useState(false)
   const [checkIn, setCheckIn] = useState({ location: '', notes: '' })
   const [cps, setCps] = useState([])
   const [sales, setSales] = useState([])
@@ -68,13 +67,26 @@ const RMDashboard = ({ rmId, onLogout }) => {
     }
   }
 
-  const loadRMData = () => {
+  const loadRMData = async () => {
     try {
-      const rm = mockData.rms.find(r => r.id === parseInt(rmId))
-      if (!rm) {
-        setErrorMessage('RM not found')
-        setLoading(false)
-        return
+      // Try to fetch from Supabase first
+      const { data: rmFromSupabase, error } = await supabase
+        .from('rms')
+        .select('*')
+        .eq('id', parseInt(rmId))
+        .single()
+      
+      let rm
+      if (error || !rmFromSupabase) {
+        // Fallback to mock data
+        rm = mockData.rms.find(r => r.id === parseInt(rmId))
+        if (!rm) {
+          setErrorMessage('RM not found')
+          setLoading(false)
+          return
+        }
+      } else {
+        rm = rmFromSupabase
       }
       
       const processedRM = processAllRMs([rm], mockData.currentWeek)[0]
@@ -215,7 +227,8 @@ const RMDashboard = ({ rmId, onLogout }) => {
     headerTitle: { fontSize: '24px', fontWeight: 'bold', margin: 0 },
     headerSubtitle: { fontSize: '14px', opacity: 0.9, marginTop: '5px' },
     checkInBtn: { background: '#28a745', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' },
-    logoutBtn: { background: 'rgba(255,255,255,0.2)', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', marginLeft: '10px' },
+    changePasswordBtn: { background: '#ffc107', color: '#333', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', marginLeft: '10px' },
+    logoutBtn: { background: '#dc3545', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', marginLeft: '10px' },
     tabs: { display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '2px solid #f0f0f0', flexWrap: 'wrap' },
     tab: { padding: '10px 20px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', fontWeight: '500', color: '#666', transition: 'all 0.3s ease' },
     activeTab: { color: '#2196f3', borderBottom: '3px solid #2196f3', marginBottom: '-2px' },
@@ -275,6 +288,7 @@ const RMDashboard = ({ rmId, onLogout }) => {
           <button style={styles.checkInBtn} onClick={() => setShowCheckIn(!showCheckIn)}>
             📍 {attendance?.loginHistory?.find(h => h.date === new Date().toISOString().split('T')[0])?.logoutTime ? '✅ Checked Out' : 'Check In'}
           </button>
+          <button style={styles.changePasswordBtn} onClick={() => setShowChangePassword(true)}>🔐 Change Password</button>
           <button onClick={onLogout} style={styles.logoutBtn}>🚪 Logout</button>
         </div>
       </div>
@@ -450,6 +464,20 @@ const RMDashboard = ({ rmId, onLogout }) => {
             ) : (
               <div>You have {meetingStats.upcoming} upcoming meetings and {meetingStats.completed} completed meetings.</div>
             )}
+          </div>
+        </div>
+      )}
+
+      {showChangePassword && (
+        <div style={styles.modalOverlay} onClick={() => setShowChangePassword(false)}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <ChangePassword 
+              userType="rm"
+              userId={rmId}
+              userName={rmData.name}
+              onClose={() => setShowChangePassword(false)}
+              onPasswordChanged={() => {}}
+            />
           </div>
         </div>
       )}
