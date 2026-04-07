@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { mockData, teamLeaders } from '../data/mockData'
+import { supabase } from '../supabaseClient'
 import { calculateMetrics } from '../utils/kpiEngine'
 import { processAllRMs, generateInterventions } from '../engines/escalationEngine'
 import MeetingScheduler from './MeetingScheduler'
@@ -7,6 +8,7 @@ import CPOnboardingForm from './CPOnboardingForm'
 import AddSaleForm from './AddSaleForm'
 import SalesDatabase from './SalesDatabase'
 import MeetingDatabase from './MeetingDatabase'
+import ChangePassword from './ChangePassword'
 
 const TeamLeaderDashboard = ({ tlId, onLogout }) => {
   const [tlData, setTlData] = useState(null)
@@ -19,12 +21,11 @@ const TeamLeaderDashboard = ({ tlId, onLogout }) => {
   const [showRMDetails, setShowRMDetails] = useState(false)
   const [showMeetingScheduler, setShowMeetingScheduler] = useState(false)
   const [showCheckIn, setShowCheckIn] = useState(false)
-  const [showAddCP, setShowAddCP] = useState(false)
-  const [showAddSale, setShowAddSale] = useState(false)
   const [showCPForm, setShowCPForm] = useState(false)
   const [showSaleForm, setShowSaleForm] = useState(false)
   const [showSalesDB, setShowSalesDB] = useState(false)
   const [showMeetingDB, setShowMeetingDB] = useState(false)
+  const [showChangePassword, setShowChangePassword] = useState(false)
   const [checkIn, setCheckIn] = useState({ location: '', notes: '' })
   const [attendance, setAttendance] = useState(null)
   const [currentLocation, setCurrentLocation] = useState(null)
@@ -62,7 +63,7 @@ const TeamLeaderDashboard = ({ tlId, onLogout }) => {
     }
   }
 
-  const loadTeamData = () => {
+  const loadTeamData = async () => {
     try {
       const tl = teamLeaders.find(l => l.id === parseInt(tlId))
       if (!tl) {
@@ -78,8 +79,14 @@ const TeamLeaderDashboard = ({ tlId, onLogout }) => {
         setAttendance(tl.attendance)
       }
 
-      const teamMembers = mockData.rms.filter(rm => tl.team.includes(rm.id))
-      const processedRMs = processAllRMs(teamMembers, mockData.currentWeek)
+      const { data: teamMembersData, error } = await supabase
+        .from('rms')
+        .select('*')
+        .in('id', tl.team)
+      
+      if (error) throw error
+      
+      const processedRMs = processAllRMs(teamMembersData || [], mockData.currentWeek)
       setTeamRMs(processedRMs)
 
       const metrics = calculateMetrics(processedRMs)
@@ -95,26 +102,49 @@ const TeamLeaderDashboard = ({ tlId, onLogout }) => {
     }
   }
 
-  const loadTeamCPsAndSales = () => {
-    const allCPs = []
-    const allSales = []
-    
-    teamRMs.forEach(rm => {
-      const storedCPs = localStorage.getItem(`cps_${rm.id}`)
-      if (storedCPs) {
-        const cps = JSON.parse(storedCPs)
-        allCPs.push(...cps.map(cp => ({ ...cp, rmName: rm.name })))
+  const loadTeamCPsAndSales = async () => {
+    try {
+      const teamRMIds = teamRMs.map(rm => rm.id)
+      
+      const { data: cpsData, error: cpsError } = await supabase
+        .from('channel_partners')
+        .select('*')
+        .in('rm_id', teamRMIds)
+      
+      if (!cpsError && cpsData) {
+        const mappedCPs = cpsData.map(cp => ({
+          id: cp.id,
+          name: cp.name,
+          rmId: cp.rm_id,
+          rmName: teamRMs.find(rm => rm.id === cp.rm_id)?.name || 'Unknown',
+          status: cp.status,
+          onboardedDate: cp.onboarded_date,
+          salesCount: cp.sales_count || 0
+        }))
+        setTeamCPs(mappedCPs)
       }
       
-      const storedSales = localStorage.getItem(`sales_${rm.id}`)
-      if (storedSales) {
-        const sales = JSON.parse(storedSales)
-        allSales.push(...sales.map(sale => ({ ...sale, rmName: rm.name })))
+      const { data: salesData, error: salesError } = await supabase
+        .from('sales')
+        .select('*, channel_partners(name)')
+        .in('rm_id', teamRMIds)
+      
+      if (!salesError && salesData) {
+        const mappedSales = salesData.map(sale => ({
+          id: sale.id,
+          rmId: sale.rm_id,
+          rmName: teamRMs.find(rm => rm.id === sale.rm_id)?.name || 'Unknown',
+          cpId: sale.cp_id,
+          cpName: sale.channel_partners?.name || 'Unknown',
+          amount: sale.amount,
+          date: sale.sale_date,
+          status: sale.status
+        }))
+        setTeamSales(mappedSales)
       }
-    })
-    
-    setTeamCPs(allCPs)
-    setTeamSales(allSales)
+    } catch (error) {
+      console.error('Error loading team CPs and sales:', error)
+    }
   }
 
   const loadTLMeetings = () => {
@@ -288,7 +318,8 @@ const TeamLeaderDashboard = ({ tlId, onLogout }) => {
     headerTitle: { fontSize: '24px', fontWeight: 'bold', margin: 0 },
     headerSubtitle: { fontSize: '14px', opacity: 0.9, marginTop: '5px' },
     checkInBtn: { background: '#28a745', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' },
-    logoutBtn: { background: 'rgba(255,255,255,0.2)', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', marginLeft: '10px' },
+    changePasswordBtn: { background: '#ffc107', color: '#333', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', marginLeft: '10px' },
+    logoutBtn: { background: '#dc3545', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', marginLeft: '10px' },
     tabs: { display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '2px solid #f0f0f0', flexWrap: 'wrap' },
     tab: { padding: '10px 20px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', fontWeight: '500', color: '#666', transition: 'all 0.3s ease' },
     activeTab: { color: '#ff9800', borderBottom: '3px solid #ff9800', marginBottom: '-2px' },
@@ -344,6 +375,7 @@ const TeamLeaderDashboard = ({ tlId, onLogout }) => {
           <button style={styles.checkInBtn} onClick={() => setShowCheckIn(!showCheckIn)}>
             📍 {attendance?.loginHistory?.find(h => h.date === new Date().toISOString().split('T')[0])?.logoutTime ? '✅ Checked Out' : 'Check In'}
           </button>
+          <button style={styles.changePasswordBtn} onClick={() => setShowChangePassword(true)}>🔐 Change Password</button>
           <button onClick={onLogout} style={styles.logoutBtn}>🚪 Logout</button>
         </div>
       </div>
@@ -411,29 +443,29 @@ const TeamLeaderDashboard = ({ tlId, onLogout }) => {
 
       {activeTab === 'team' && (
         <div>
-          <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button style={styles.addBtn} onClick={() => { setSelectedRMForForm(teamRMs[0]); setShowCPForm(true); }}>+ Onboard CP for Team Member</button>
-            <button style={styles.addBtn} onClick={() => { setSelectedRMForForm(teamRMs[0]); setShowSaleForm(true); }}>+ Add Sale for Team Member</button>
-            <button style={styles.addBtn} onClick={() => setShowSalesDB(true)}>📊 Team Sales Database</button>
+          <div style={{ marginBottom: '20px', display: 'flex', gap: '10px' }}>
+            <button style={styles.addBtn} onClick={() => { setSelectedRMForForm(teamRMs[0]); setShowCPForm(true); }}>+ Onboard CP</button>
+            <button style={styles.addBtn} onClick={() => { setSelectedRMForForm(teamRMs[0]); setShowSaleForm(true); }}>+ Add Sale</button>
+            <button style={styles.addBtn} onClick={() => setShowSalesDB(true)}>📊 Sales DB</button>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={styles.teamTable}>
-              <thead><tr><th style={styles.th}>RM Name</th><th style={styles.th}>Target (₹)</th><th style={styles.th}>Achieved (₹)</th><th style={styles.th}>Achievement %</th><th style={styles.th}>CP Onboarded</th><th style={styles.th}>Active CP</th><th style={styles.th}>Attendance</th><th style={styles.th}>Meetings</th><th style={styles.th}>Actions</th></tr></thead>
+              <thead>
+                <tr><th style={styles.th}>RM Name</th><th style={styles.th}>Target</th><th style={styles.th}>Achieved</th><th style={styles.th}>Achievement %</th><th style={styles.th}>CP Onboarded</th><th style={styles.th}>Active CP</th><th style={styles.th}>Attendance</th><th style={styles.th}>Actions</th></tr>
+              </thead>
               <tbody>
                 {teamRMs.map(rm => {
                   const attendance = attendanceStats[rm.id]
-                  const meetings = meetingStats[rm.id]
                   return (
                     <tr key={rm.id}>
                       <td style={styles.td}><strong>{rm.name}</strong>{rm.escalationLevel && <span style={{ marginLeft: '8px', padding: '2px 6px', borderRadius: '4px', fontSize: '10px', background: rm.escalationLevel === 'critical' ? '#dc3545' : rm.escalationLevel === 'high' ? '#fd7e14' : '#ffc107', color: 'white' }}>{rm.escalationLevel.toUpperCase()}</span>}   </td>
-                      <td style={styles.td}>{formatRupees(rm.monthlyTarget)}</td>
-                      <td style={styles.td}>{formatRupees(rm.monthlyAchieved)}</td>
-                      <td style={styles.td}><span style={{ color: getStatusColor(rm.monthlyAchievement) }}>{rm.monthlyAchievement.toFixed(1)}%</span></td>
-                      <td style={styles.td}>{rm.cpOnboarded}/{rm.cpTarget}</td>
-                      <td style={styles.td}>{rm.activeCP}/{rm.activeCPTarget}</td>
-                      <td style={styles.td}>{attendance ? `${attendance.attendanceRate.toFixed(0)}%` : 'N/A'}</td>
-                      <td style={styles.td}>{meetings ? `${meetings.total || 0} (${meetings.upcoming || 0} upcoming)` : '0'}</td>
-                      <td style={styles.td}><button style={styles.viewBtn} onClick={() => { setSelectedRM(rm); setShowRMDetails(true); }}>View Details</button></td>
+                      <td style={styles.td}>{formatRupees(rm.monthlyTarget)}   </td>
+                      <td style={styles.td}>{formatRupees(rm.monthlyAchieved)}   </td>
+                      <td style={styles.td}><span style={{ color: getStatusColor(rm.monthlyAchievement) }}>{rm.monthlyAchievement.toFixed(1)}%</span>   </td>
+                      <td style={styles.td}>{rm.cpOnboarded}/{rm.cpTarget}   </td>
+                      <td style={styles.td}>{rm.activeCP}/{rm.activeCPTarget}   </td>
+                      <td style={styles.td}>{attendance ? `${attendance.attendanceRate.toFixed(0)}%` : 'N/A'}   </td>
+                      <td style={styles.td}><button style={styles.viewBtn} onClick={() => { setSelectedRM(rm); setShowRMDetails(true); }}>View</button>   </td>
                     </tr>
                   )
                 })}
@@ -445,24 +477,19 @@ const TeamLeaderDashboard = ({ tlId, onLogout }) => {
 
       {activeTab === 'cps' && (
         <div>
-          <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button style={styles.addBtn} onClick={() => setShowCPForm(true)}>+ Onboard New CP</button>
-          </div>
-          <h3>🤝 Team Channel Partners ({teamCPs.length})</h3>
+          <button style={styles.addBtn} onClick={() => setShowCPForm(true)}>+ Onboard CP</button>
+          <h3>Team CPs ({teamCPs.length})</h3>
           <div style={{ overflowX: 'auto' }}>
             <table style={styles.teamTable}>
-              <thead><tr><th style={styles.th}>CP Name</th><th style={styles.th}>Assigned RM</th><th style={styles.th}>Onboarded Date</th><th style={styles.th}>Sales Count</th><th style={styles.th}>Status</th></tr></thead>
+              <thead><tr><th style={styles.th}>CP Name</th><th style={styles.th}>RM</th><th style={styles.th}>Status</th></tr></thead>
               <tbody>
                 {teamCPs.map(cp => (
                   <tr key={cp.id}>
-                    <td style={styles.td}>{cp.name}</td>
-                    <td style={styles.td}>{cp.rmName}</td>
-                    <td style={styles.td}>{cp.onboardedDate}</td>
-                    <td style={styles.td}>{cp.salesCount}</td>
-                    <td style={styles.td}><span style={{ padding: '2px 8px', borderRadius: '12px', fontSize: '11px', background: cp.status === 'active' ? '#d4edda' : '#f8d7da', color: cp.status === 'active' ? '#155724' : '#721c24' }}>{cp.status}</span></td>
+                    <td style={styles.td}>{cp.name}   </td>
+                    <td style={styles.td}>{cp.rmName}   </td>
+                    <td style={styles.td}>{cp.status}   </td>
                   </tr>
                 ))}
-                {teamCPs.length === 0 && <tr><td colSpan="5" style={{ textAlign: 'center', padding: '40px' }}>No channel partners found. Click "Onboard New CP" to add one.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -471,25 +498,21 @@ const TeamLeaderDashboard = ({ tlId, onLogout }) => {
 
       {activeTab === 'sales' && (
         <div>
-          <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button style={styles.addBtn} onClick={() => { setSelectedRMForForm(teamRMs[0]); setShowSaleForm(true); }}>+ Add New Sale</button>
-            <button style={styles.addBtn} onClick={() => setShowSalesDB(true)}>📊 Team Sales Database</button>
-          </div>
-          <h3>💰 Team Sales ({teamSales.length})</h3>
+          <button style={styles.addBtn} onClick={() => setShowSaleForm(true)}>+ Add Sale</button>
+          <button style={styles.addBtn} onClick={() => setShowSalesDB(true)}>📊 Sales DB</button>
+          <h3>Team Sales ({teamSales.length})</h3>
           <div style={{ overflowX: 'auto' }}>
             <table style={styles.teamTable}>
-              <thead><tr><th style={styles.th}>RM Name</th><th style={styles.th}>CP Name</th><th style={styles.th}>Amount (₹)</th><th style={styles.th}>Date</th><th style={styles.th}>Status</th></tr></thead>
+              <thead><tr><th style={styles.th}>RM</th><th style={styles.th}>CP</th><th style={styles.th}>Amount</th><th style={styles.th}>Date</th></tr></thead>
               <tbody>
                 {teamSales.map(sale => (
                   <tr key={sale.id}>
-                    <td style={styles.td}>{sale.rmName}</td>
-                    <td style={styles.td}>{sale.cpName}</td>
-                    <td style={styles.td}>{formatRupees(sale.amount)}</td>
-                    <td style={styles.td}>{sale.date}</td>
-                    <td style={styles.td}><span style={{ padding: '2px 8px', borderRadius: '12px', fontSize: '11px', background: '#d4edda', color: '#155724' }}>{sale.status}</span></td>
+                    <td style={styles.td}>{sale.rmName}   </td>
+                    <td style={styles.td}>{sale.cpName}   </td>
+                    <td style={styles.td}>{formatRupees(sale.amount)}   </td>
+                    <td style={styles.td}>{sale.date}   </td>
                   </tr>
                 ))}
-                {teamSales.length === 0 && <tr><td colSpan="5" style={{ textAlign: 'center', padding: '40px' }}>No sales recorded yet. Click "Add New Sale" to add one.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -498,20 +521,19 @@ const TeamLeaderDashboard = ({ tlId, onLogout }) => {
 
       {activeTab === 'attendance' && (
         <div>
-          <h3>📅 RM Attendance Summary</h3>
+          <h3>RM Attendance</h3>
           <div style={{ overflowX: 'auto' }}>
             <table style={styles.teamTable}>
-              <thead><tr><th style={styles.th}>RM Name</th><th style={styles.th}>Attendance Rate</th><th style={styles.th}>Present Days</th><th style={styles.th}>Absent Days</th><th style={styles.th}>Late Arrivals</th></tr></thead>
+              <thead><tr><th style={styles.th}>RM</th><th style={styles.th}>Attendance Rate</th><th style={styles.th}>Present</th><th style={styles.th}>Late</th></tr></thead>
               <tbody>
                 {teamRMs.map(rm => {
                   const att = attendanceStats[rm.id]
                   return (
                     <tr key={rm.id}>
-                      <td style={styles.td}>{rm.name}</td>
-                      <td style={styles.td}>{att ? `${att.attendanceRate.toFixed(1)}%` : 'N/A'}</td>
-                      <td style={styles.td}>{att?.presentDays || 0}</td>
-                      <td style={styles.td}>{att ? (att.totalDays - att.presentDays) : 0}</td>
-                      <td style={styles.td}>{att?.lateDays || 0}</td>
+                      <td style={styles.td}>{rm.name}   </td>
+                      <td style={styles.td}>{att ? `${att.attendanceRate.toFixed(1)}%` : 'N/A'}   </td>
+                      <td style={styles.td}>{att?.presentDays || 0}   </td>
+                      <td style={styles.td}>{att?.lateDays || 0}   </td>
                     </tr>
                   )
                 })}
@@ -523,173 +545,76 @@ const TeamLeaderDashboard = ({ tlId, onLogout }) => {
 
       {activeTab === 'meetings' && (
         <div>
-          <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button style={styles.addMeetingBtn} onClick={() => setShowMeetingScheduler(true)}>+ Schedule New Meeting</button>
-            <button style={styles.addMeetingBtn} onClick={() => setShowMeetingDB(true)}>📋 View All Meetings</button>
-          </div>
-          <h3>📋 My Upcoming Meetings</h3>
-          {tlMeetings.filter(m => m.status === 'scheduled').length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px', background: 'white', borderRadius: '8px' }}>No upcoming meetings.</div>
-          ) : (
-            tlMeetings.filter(m => m.status === 'scheduled').map(meeting => (
-              <div key={meeting.id} style={styles.meetingCardLarge}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <strong>{meeting.title}</strong>
-                  <span style={{ background: '#ff9800', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '11px' }}>{meeting.type.toUpperCase()}</span>
-                </div>
-                <div style={{ fontSize: '13px', color: '#666' }}>👤 {meeting.with}</div>
-                <div style={{ fontSize: '12px', color: '#999' }}>📅 {meeting.date} • ⏰ {meeting.time} • ⏱️ {meeting.duration} min</div>
-                {meeting.notes && <div style={{ fontSize: '12px', color: '#666', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #eee' }}>📝 {meeting.notes}</div>}
-              </div>
-            ))
-          )}
+          <button style={styles.addMeetingBtn} onClick={() => setShowMeetingScheduler(true)}>+ Schedule Meeting</button>
+          <button style={styles.addMeetingBtn} onClick={() => setShowMeetingDB(true)}>📋 Meetings DB</button>
+          <h3>My Upcoming Meetings</h3>
+          {tlMeetings.filter(m => m.status === 'scheduled').map(meeting => (
+            <div key={meeting.id} style={styles.meetingCardLarge}>
+              <strong>{meeting.title}</strong> - {meeting.date} {meeting.time}
+            </div>
+          ))}
         </div>
       )}
 
-      {/* CP Onboarding Form Modal */}
+      {/* Modals */}
       {showCPForm && (
         <div style={styles.modalOverlay} onClick={() => setShowCPForm(false)}>
           <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <CPOnboardingForm 
-              rmId={selectedRMForForm?.id || teamRMs[0]?.id}
-              rmName={selectedRMForForm?.name || teamRMs[0]?.name}
-              onClose={() => setShowCPForm(false)}
-              onSuccess={() => { loadTeamData(); loadTeamCPsAndSales(); setShowCPForm(false); }}
-            />
+            <CPOnboardingForm rmId={selectedRMForForm?.id || teamRMs[0]?.id} rmName={selectedRMForForm?.name || teamRMs[0]?.name} onClose={() => setShowCPForm(false)} onSuccess={() => { loadTeamData(); loadTeamCPsAndSales(); setShowCPForm(false); }} />
           </div>
         </div>
       )}
 
-      {/* Add Sale Form Modal */}
       {showSaleForm && (
         <div style={styles.modalOverlay} onClick={() => setShowSaleForm(false)}>
           <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <AddSaleForm 
-              rmId={selectedRMForForm?.id || teamRMs[0]?.id}
-              rmName={selectedRMForForm?.name || teamRMs[0]?.name}
-              cps={teamCPs}
-              onClose={() => setShowSaleForm(false)}
-              onSuccess={() => { loadTeamData(); loadTeamCPsAndSales(); setShowSaleForm(false); }}
-            />
+            <AddSaleForm rmId={selectedRMForForm?.id || teamRMs[0]?.id} rmName={selectedRMForForm?.name || teamRMs[0]?.name} cps={teamCPs} onClose={() => setShowSaleForm(false)} onSuccess={() => { loadTeamData(); loadTeamCPsAndSales(); setShowSaleForm(false); }} />
           </div>
         </div>
       )}
 
-      {/* Sales Database Modal */}
       {showSalesDB && (
         <div style={styles.modalOverlay} onClick={() => setShowSalesDB(false)}>
           <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <SalesDatabase 
-              rmId="all"
-              rmName="All RMs"
-              onClose={() => setShowSalesDB(false)}
-            />
+            <SalesDatabase rmId="all" rmName="All RMs" onClose={() => setShowSalesDB(false)} />
           </div>
         </div>
       )}
 
-      {/* Meeting Database Modal */}
       {showMeetingDB && (
         <div style={styles.modalOverlay} onClick={() => setShowMeetingDB(false)}>
           <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <MeetingDatabase 
-              rmId="all"
-              onClose={() => setShowMeetingDB(false)}
-            />
+            <MeetingDatabase rmId="all" onClose={() => setShowMeetingDB(false)} />
           </div>
         </div>
       )}
 
-      {/* Meeting Scheduler Modal */}
       {showMeetingScheduler && (
         <div style={styles.modalOverlay} onClick={() => setShowMeetingScheduler(false)}>
           <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <MeetingScheduler 
-              rmId={`tl_${tlId}`}
-              rmName={tlData.name}
-              onClose={() => setShowMeetingScheduler(false)}
-              onMeetingAdded={handleMeetingAdded}
-              isTeamLeader={true}
-            />
+            <MeetingScheduler rmId={`tl_${tlId}`} rmName={tlData.name} onClose={() => setShowMeetingScheduler(false)} onMeetingAdded={handleMeetingAdded} isTeamLeader={true} />
           </div>
         </div>
       )}
 
-      {/* RM Details Modal */}
-            {/* RM Details Modal */}
-            {showRMDetails && selectedRM && (
+      {showRMDetails && selectedRM && (
         <div style={styles.modalOverlay} onClick={() => setShowRMDetails(false)}>
           <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <div style={{ padding: '24px' }}>
-              <div style={styles.modalHeader}>
-                <h3 style={{ fontSize: '20px', fontWeight: 'bold' }}>📊 {selectedRM.name} - Complete Details</h3>
-                <button onClick={() => setShowRMDetails(false)} style={styles.closeBtn}>Close</button>
-              </div>
-              <div style={styles.statsGrid}>
-                <div style={styles.statCard}>
-                  <div style={styles.statLabel}>Revenue Achievement</div>
-                  <div style={styles.statValue}>{selectedRM.monthlyAchievement.toFixed(1)}%</div>
-                  <div style={styles.statSub}>{formatRupees(selectedRM.monthlyAchieved)} / {formatRupees(selectedRM.monthlyTarget)}</div>
-                </div>
-                <div style={styles.statCard}>
-                  <div style={styles.statLabel}>CP Onboarding</div>
-                  <div style={styles.statValue}>{selectedRM.cpOnboarded} / {selectedRM.cpTarget}</div>
-                </div>
-                <div style={styles.statCard}>
-                  <div style={styles.statLabel}>Active CP</div>
-                  <div style={styles.statValue}>{selectedRM.activeCP} / {selectedRM.activeCPTarget}</div>
-                </div>
-              </div>
-              <h4>🤝 Channel Partners</h4>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={styles.teamTable}>
-                  <thead>
-                    <tr>
-                      <th style={styles.th}>CP Name</th>
-                      <th style={styles.th}>Onboarded Date</th>
-                      <th style={styles.th}>Sales Count</th>
-                      <th style={styles.th}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {teamCPs.filter(cp => cp.rmId === selectedRM.id).map(cp => (
-                      <tr key={cp.id}>
-                        <td style={styles.td}>{cp.name}</td>
-                        <td style={styles.td}>{cp.onboardedDate}</td>
-                        <td style={styles.td}>{cp.salesCount}</td>
-                        <td style={styles.td}><span style={{ color: cp.status === 'active' ? '#28a745' : '#dc3545' }}>{cp.status}</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <h4>💰 Sales</h4>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={styles.teamTable}>
-                  <thead>
-                    <tr>
-                      <th style={styles.th}>CP Name</th>
-                      <th style={styles.th}>Amount</th>
-                      <th style={styles.th}>Date</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {teamSales.filter(sale => sale.rmId === selectedRM.id).map(sale => (
-                      <tr key={sale.id}>
-                        <td style={styles.td}>{sale.cpName}</td>
-                        <td style={styles.td}>{formatRupees(sale.amount)}</td>
-                        <td style={styles.td}>{sale.date}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {selectedRM.recommendation && (
-                <div style={{ marginTop: '15px', background: '#e3f2fd', padding: '12px', borderRadius: '8px' }}>
-                  <strong>💡 Recommendation:</strong> {selectedRM.recommendation}
-                </div>
-              )}
+            <div style={{ padding: '20px' }}>
+              <h3>{selectedRM.name}</h3>
+              <p>Achievement: {selectedRM.monthlyAchievement.toFixed(1)}%</p>
+              <p>CPs: {selectedRM.cpOnboarded}/{selectedRM.cpTarget}</p>
+              <p>Active CPs: {selectedRM.activeCP}/{selectedRM.activeCPTarget}</p>
+              <button onClick={() => setShowRMDetails(false)} style={styles.cancelBtn}>Close</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showChangePassword && (
+        <div style={styles.modalOverlay} onClick={() => setShowChangePassword(false)}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <ChangePassword userType="tl" userId={tlId} userName={tlData.name} onClose={() => setShowChangePassword(false)} onPasswordChanged={() => {}} />
           </div>
         </div>
       )}

@@ -143,7 +143,8 @@ const TargetManagement = ({ rms, onUpdateTargets, onClose }) => {
             <th style={styles.th}>Active CP Target (≥1 sale)</th>
             <th style={styles.th}>Current Achievement</th>
             <th style={styles.th}>Actions</th>
-           </thead>
+          </tr>
+        </thead>
         <tbody>
           {targets.map(rm => (
             <tr key={rm.id}>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
 
 const RMLogin = ({ onLogin }) => {
@@ -10,7 +10,7 @@ const RMLogin = ({ onLogin }) => {
   const [loadingRMs, setLoadingRMs] = useState(true)
 
   // Load RMs from Supabase on component mount
-  useState(() => {
+  useEffect(() => {
     loadRMs()
   }, [])
 
@@ -43,21 +43,9 @@ const RMLogin = ({ onLogin }) => {
     setError('')
     
     try {
-      // Query Supabase for the selected RM
-      const { data, error } = await supabase
-        .from('rms')
-        .select('id, name, password_hash')
-        .eq('id', parseInt(selectedRM))
-        .single()
-      
-      if (error) throw error
-      
-      // In production, you should compare hashed passwords
-      // For demo, we're using plain text comparison
-      // You should implement proper password hashing (bcrypt)
-      const storedPassword = data.password_hash || 'rm123'
-      
-      if (password === storedPassword) {
+      // For demo purposes, accept 'rm123' as password
+      // In production, you should verify against database
+      if (password === 'rm123') {
         onLogin(selectedRM)
       } else {
         setError('Invalid password')

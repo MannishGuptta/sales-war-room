@@ -19,25 +19,12 @@ const TeamLeaderLogin = ({ onLogin }) => {
       setLoadingTLs(true)
       const { data, error } = await supabase
         .from('team_leaders')
-        .select('id, name, email, region, team_size')
+        .select('id, name, email, region')
         .order('name')
       
       if (error) throw error
       
-      // Get team size for each TL (count of RMs assigned)
-      const tlWithTeamSize = await Promise.all((data || []).map(async (tl) => {
-        const { count, error: countError } = await supabase
-          .from('rm_tl_assignments')
-          .select('*', { count: 'exact', head: true })
-          .eq('tl_id', tl.id)
-        
-        return {
-          ...tl,
-          team_size: count || 0
-        }
-      }))
-      
-      setTlList(tlWithTeamSize || [])
+      setTlList(data || [])
     } catch (err) {
       console.error('Error loading Team Leaders:', err)
       setError('Failed to load Team Leaders. Please refresh the page.')
@@ -56,20 +43,9 @@ const TeamLeaderLogin = ({ onLogin }) => {
     setError('')
     
     try {
-      // Query Supabase for the selected Team Leader
-      const { data, error } = await supabase
-        .from('team_leaders')
-        .select('id, name, email, password_hash')
-        .eq('id', parseInt(selectedTL))
-        .single()
-      
-      if (error) throw error
-      
-      // For demo, using plain text comparison
-      // In production, use proper password hashing
-      const storedPassword = data.password_hash || 'tl123'
-      
-      if (password === storedPassword) {
+      // For demo purposes, accept 'tl123' as password
+      // In production, you should verify against database
+      if (password === 'tl123') {
         onLogin(selectedTL)
       } else {
         setError('Invalid password')
@@ -205,7 +181,7 @@ const TeamLeaderLogin = ({ onLogin }) => {
             <option value="">Select your profile</option>
             {tlList.map(tl => (
               <option key={tl.id} value={tl.id}>
-                {tl.name} - {tl.region} ({tl.team_size || 0} RMs)
+                {tl.name} - {tl.region || 'No Region'}
               </option>
             ))}
           </select>

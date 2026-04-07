@@ -1,5 +1,10 @@
-export const calculateEscalation = (rm, currentDate = new Date(), currentWeek = 3) => {
-    const { monthlyAchievement, cpActivationRate, lastActivity, weeklyProgress } = rm
+export const calculateEscalation = (rm, currentDate = new Date()) => {
+    const { monthlyAchievement, lastActivity } = rm
+    
+    // Handle missing data
+    if (!monthlyAchievement && monthlyAchievement !== 0) {
+      return null
+    }
     
     // Calculate days since last activity
     let daysSinceActivity = 0
@@ -8,47 +13,29 @@ export const calculateEscalation = (rm, currentDate = new Date(), currentWeek = 
       daysSinceActivity = Math.floor((currentDate - lastActivityDate) / (1000 * 60 * 60 * 24))
     }
     
-    // Calculate week-to-date progress
-    const weekProgress = weeklyProgress[`week${currentWeek}`]
-    const weeklyTargetRevenue = rm.monthlyTarget / 4
-    const weeklyRevenuePercent = weekProgress ? (weekProgress.revenue / weeklyTargetRevenue) * 100 : 0
-    
-    // CRITICAL: No activity for 2+ days OR Week progress < 20%
-    if (daysSinceActivity >= 2 || (currentWeek === 3 && weeklyRevenuePercent < 20)) {
-      const reason = daysSinceActivity >= 2 
-        ? `No activity for ${daysSinceActivity} days`
-        : `Only ${weeklyRevenuePercent.toFixed(0)}% of weekly target achieved`
+    // CRITICAL: No activity for 2 or more days
+    if (daysSinceActivity >= 2) {
       return {
         level: 'critical',
-        message: `${reason} - URGENT INTERVENTION NEEDED`,
+        message: `No activity for ${daysSinceActivity} days - URGENT INTERVENTION NEEDED`,
         recommendation: 'Call RM immediately, conduct emergency coaching session'
       }
     }
     
-    // HIGH: Monthly achievement <40% OR CP activation <30% OR Week progress <40%
-    if (monthlyAchievement < 40 || cpActivationRate < 30 || weeklyRevenuePercent < 40) {
-      const reasons = []
-      if (monthlyAchievement < 40) reasons.push(`${monthlyAchievement.toFixed(1)}% monthly achievement`)
-      if (cpActivationRate < 30) reasons.push(`${cpActivationRate.toFixed(1)}% CP activation`)
-      if (weeklyRevenuePercent < 40) reasons.push(`${weeklyRevenuePercent.toFixed(0)}% week progress`)
-      
+    // HIGH: Monthly achievement below 40%
+    if (monthlyAchievement < 40) {
       return {
         level: 'high',
-        message: `${reasons.join(', ')} - CRITICAL UNDERPERFORMANCE`,
+        message: `${monthlyAchievement.toFixed(1)}% achievement - CRITICAL UNDERPERFORMANCE`,
         recommendation: 'Schedule daily performance review, shadow senior RM for a day'
       }
     }
     
-    // MEDIUM: Monthly achievement <60% OR CP activation <50% OR Week progress <60%
-    if (monthlyAchievement < 60 || cpActivationRate < 50 || weeklyRevenuePercent < 60) {
-      const reasons = []
-      if (monthlyAchievement < 60) reasons.push(`${monthlyAchievement.toFixed(1)}% monthly achievement`)
-      if (cpActivationRate < 50) reasons.push(`${cpActivationRate.toFixed(1)}% CP activation`)
-      if (weeklyRevenuePercent < 60) reasons.push(`${weeklyRevenuePercent.toFixed(0)}% week progress`)
-      
+    // MEDIUM: Monthly achievement below 60%
+    if (monthlyAchievement < 60) {
       return {
         level: 'medium',
-        message: `${reasons.join(', ')} - BELOW TARGET`,
+        message: `${monthlyAchievement.toFixed(1)}% achievement - BELOW TARGET`,
         recommendation: 'Weekly coaching session, review opportunity pipeline together'
       }
     }
@@ -56,37 +43,39 @@ export const calculateEscalation = (rm, currentDate = new Date(), currentWeek = 
     return null
   }
   
-  export const processAllRMs = (rms, currentWeek = 3) => {
+  export const processAllRMs = (rms, currentWeek = 1) => {
     if (!rms || !Array.isArray(rms)) {
       return []
     }
     
     return rms.map(rm => {
-      const escalation = calculateEscalation(rm, new Date(), currentWeek)
+      const escalation = calculateEscalation(rm)
       
-      // Determine status based on multiple factors
+      // Determine status based on monthly achievement
       let status = 'green'
       const monthlyAchievement = rm.monthlyAchievement || 0
-      const cpActivationRate = rm.cpActivationRate || 0
-      const weekProgress = rm.weeklyProgress[`week${currentWeek}`]
-      const weeklyTargetRevenue = rm.monthlyTarget / 4
-      const weeklyRevenuePercent = weekProgress ? (weekProgress.revenue / weeklyTargetRevenue) * 100 : 0
       
-      if (monthlyAchievement < 40 || cpActivationRate < 30 || weeklyRevenuePercent < 40) status = 'red'
-      else if (monthlyAchievement < 60 || cpActivationRate < 50 || weeklyRevenuePercent < 60) status = 'yellow'
+      if (monthlyAchievement < 40) status = 'red'
+      else if (monthlyAchievement < 60) status = 'yellow'
+      
+      // Calculate gap if not provided
+      const gap = rm.monthlyGap || (rm.monthlyTarget - rm.monthlyAchieved)
       
       return {
         ...rm,
         status,
+        monthlyGap: gap,
         escalationLevel: escalation?.level || null,
         escalationMessage: escalation?.message || null,
         recommendation: escalation?.recommendation || null,
-        currentWeekProgress: {
-          revenue: weekProgress?.revenue || 0,
-          revenuePercent: weeklyRevenuePercent,
-          cpOnboarded: weekProgress?.cpOnboarded || 0,
-          activeCP: weekProgress?.activeCP || 0
-        }
+        monthlyTarget: rm.monthlyTarget || 0,
+        monthlyAchieved: rm.monthlyAchieved || 0,
+        monthlyAchievement: monthlyAchievement,
+        cpTarget: rm.cpTarget || 0,
+        cpOnboarded: rm.cpOnboarded || 0,
+        activeCPTarget: rm.activeCPTarget || 0,
+        activeCP: rm.activeCP || 0,
+        cpActivationRate: rm.cpActivationRate || (rm.cpOnboarded > 0 ? (rm.activeCP / rm.cpOnboarded) * 100 : 0)
       }
     })
   }
@@ -96,6 +85,7 @@ export const calculateEscalation = (rm, currentDate = new Date(), currentWeek = 
       return []
     }
     
+    // Sort by escalation level: critical > high > medium
     const levelOrder = { critical: 0, high: 1, medium: 2 }
     
     return processedRMs
@@ -111,7 +101,6 @@ export const calculateEscalation = (rm, currentDate = new Date(), currentWeek = 
         recommendation: rm.recommendation,
         monthlyAchievement: rm.monthlyAchievement,
         cpActivationRate: rm.cpActivationRate,
-        weekProgress: rm.currentWeekProgress,
         daysInactive: rm.lastActivity ? Math.floor((new Date() - new Date(rm.lastActivity)) / (1000 * 60 * 60 * 24)) : 0,
         timestamp: new Date().toISOString()
       }))

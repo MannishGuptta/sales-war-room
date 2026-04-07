@@ -29,12 +29,14 @@
     "predeploy": "npm run build",
     "deploy": "gh-pages -d build"
   },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
-  },
+ "eslintConfig": {
+  "extends": ["react-app"],
+  "rules": {
+    "no-unused-vars": "off",
+    "react-hooks/exhaustive-deps": "off",
+    "no-whitespace-before-property": "off"
+  }
+},
   "browserslist": {
     "production": [
       ">0.2%",

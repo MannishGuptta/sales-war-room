@@ -1,51 +1,21 @@
 import { useState } from 'react'
-import { supabase } from '../supabaseClient'
 
 const AdminLogin = ({ onLogin }) => {
-  const [email, setEmail] = useState('chaudhrymannish@gmail.com')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      setError('Please enter email and password')
-      return
-    }
-    
+  const handleLogin = () => {
     setLoading(true)
     setError('')
     
-    try {
-      // Sign in with Supabase Auth
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email,
-        password: password
-      })
-      
-      if (error) throw error
-      
-      // Check if user is admin
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('is_admin')
-        .eq('id', data.user.id)
-        .single()
-      
-      if (profileError) throw profileError
-      
-      if (profile?.is_admin) {
-        onLogin()
-      } else {
-        setError('Not authorized as admin')
-        await supabase.auth.signOut()
-      }
-    } catch (err) {
-      console.error('Login error:', err)
-      setError('Invalid email or password')
-    } finally {
-      setLoading(false)
+    // Simple password check for admin
+    if (password === 'admin123') {
+      onLogin()
+    } else {
+      setError('Invalid password')
     }
+    setLoading(false)
   }
 
   const styles = {
@@ -131,20 +101,9 @@ const AdminLogin = ({ onLogin }) => {
     <div style={styles.container}>
       <div style={styles.loginBox}>
         <h1 style={styles.title}>🔐 Admin War Room</h1>
-        <p style={styles.subtitle}>Enter your credentials to access</p>
+        <p style={styles.subtitle}>Enter your password to access</p>
         
         {error && <div style={styles.error}>{error}</div>}
-        
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Email</label>
-          <input
-            type="email"
-            style={styles.input}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="admin@example.com"
-          />
-        </div>
         
         <div style={styles.formGroup}>
           <label style={styles.label}>Password</label>
@@ -153,7 +112,7 @@ const AdminLogin = ({ onLogin }) => {
             style={styles.input}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter password"
+            placeholder="Enter admin password"
             onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
           />
         </div>
@@ -170,7 +129,7 @@ const AdminLogin = ({ onLogin }) => {
         </button>
         
         <div style={styles.demoNote}>
-          🔐 Use the password you set when creating the user in Supabase
+          🔐 Demo Password: <strong>admin123</strong>
         </div>
       </div>
     </div>
@@ -178,3 +137,4 @@ const AdminLogin = ({ onLogin }) => {
 }
 
 export default AdminLogin
+

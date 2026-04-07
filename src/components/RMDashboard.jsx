@@ -9,6 +9,7 @@ import AddSaleForm from './AddSaleForm'
 import SalesDatabase from './SalesDatabase'
 import MeetingDatabase from './MeetingDatabase'
 import ChangePassword from './ChangePassword'
+import { subscribeToCPChanges, subscribeToSalesChanges, subscribeToMeetingChanges, unsubscribeAll } from '../services/realtimeService'
 
 const RMDashboard = ({ rmId, onLogout }) => {
   const [rmData, setRmData] = useState(null)
@@ -31,12 +32,41 @@ const RMDashboard = ({ rmId, onLogout }) => {
   const [currentLocation, setCurrentLocation] = useState(null)
   const [attendance, setAttendance] = useState(null)
   const [meetingStats, setMeetingStats] = useState({ total: 0, upcoming: 0, completed: 0 })
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     loadRMData()
     getCurrentLocation()
     loadMeetingStats()
+    setupRealtimeSubscriptions()
+    
+    return () => {
+      unsubscribeAll()
+    }
   }, [rmId])
+
+  const setupRealtimeSubscriptions = () => {
+    subscribeToCPChanges((payload) => {
+      if (payload.new.rm_id === parseInt(rmId)) {
+        loadRMData()
+        loadMeetingStats()
+      }
+    })
+    
+    subscribeToSalesChanges((payload) => {
+      if (payload.new.rm_id === parseInt(rmId)) {
+        loadRMData()
+        loadMeetingStats()
+      }
+    })
+    
+    subscribeToMeetingChanges((payload) => {
+      if (payload.new.rm_id === parseInt(rmId)) {
+        loadRMData()
+        loadMeetingStats()
+      }
+    })
+  }
 
   const getCurrentLocation = () => {
     if (navigator.geolocation) {
@@ -69,7 +99,8 @@ const RMDashboard = ({ rmId, onLogout }) => {
 
   const loadRMData = async () => {
     try {
-      // Try to fetch from Supabase first
+      setLoading(true)
+      
       const { data: rmFromSupabase, error } = await supabase
         .from('rms')
         .select('*')
@@ -78,7 +109,6 @@ const RMDashboard = ({ rmId, onLogout }) => {
       
       let rm
       if (error || !rmFromSupabase) {
-        // Fallback to mock data
         rm = mockData.rms.find(r => r.id === parseInt(rmId))
         if (!rm) {
           setErrorMessage('RM not found')
@@ -86,7 +116,23 @@ const RMDashboard = ({ rmId, onLogout }) => {
           return
         }
       } else {
-        rm = rmFromSupabase
+        rm = {
+          id: rmFromSupabase.id,
+          name: rmFromSupabase.name,
+          email: rmFromSupabase.email,
+          phone: rmFromSupabase.phone,
+          monthlyTarget: rmFromSupabase.monthly_target,
+          monthlyAchieved: rmFromSupabase.monthly_achieved || 0,
+          monthlyGap: rmFromSupabase.monthly_gap || 0,
+          monthlyAchievement: rmFromSupabase.monthly_achievement || 0,
+          cpTarget: rmFromSupabase.cp_target || 0,
+          cpOnboarded: rmFromSupabase.cp_onboarded || 0,
+          activeCPTarget: rmFromSupabase.active_cp_target || 0,
+          activeCP: rmFromSupabase.active_cp || 0,
+          status: rmFromSupabase.status || 'active',
+          escalationLevel: rmFromSupabase.escalation_level,
+          lastActivity: rmFromSupabase.last_activity || new Date().toISOString().split('T')[0]
+        }
       }
       
       const processedRM = processAllRMs([rm], mockData.currentWeek)[0]
@@ -96,7 +142,7 @@ const RMDashboard = ({ rmId, onLogout }) => {
       if (storedAttendance) {
         setAttendance(JSON.parse(storedAttendance))
       } else {
-        setAttendance(rm.attendance || {
+        setAttendance({
           totalDays: 22,
           presentDays: 0,
           absentDays: 0,
@@ -112,34 +158,47 @@ const RMDashboard = ({ rmId, onLogout }) => {
       const rmInterventions = generateInterventions([processedRM])
       setInterventions(rmInterventions)
       
-      const storedCPs = localStorage.getItem(`cps_${rmId}`)
-      const storedSales = localStorage.getItem(`sales_${rmId}`)
+      const { data: cpsData, error: cpsError } = await supabase
+        .from('channel_partners')
+        .select('*')
+        .eq('rm_id', parseInt(rmId))
       
-      if (storedCPs) {
-        setCps(JSON.parse(storedCPs))
-      } else {
-        const mockCPs = [
-          { id: 1, name: 'Tech Solutions', rmId: rm.id, rmName: rm.name, status: 'active', onboardedDate: '2024-03-01', salesCount: 5 },
-          { id: 2, name: 'Digital Innovations', rmId: rm.id, rmName: rm.name, status: 'active', onboardedDate: '2024-03-05', salesCount: 3 }
-        ]
-        setCps(mockCPs)
-        localStorage.setItem(`cps_${rmId}`, JSON.stringify(mockCPs))
+      if (!cpsError && cpsData) {
+        const mappedCPs = cpsData.map(cp => ({
+          id: cp.id,
+          name: cp.name,
+          rmId: cp.rm_id,
+          rmName: rm.name,
+          status: cp.status,
+          onboardedDate: cp.onboarded_date,
+          salesCount: cp.sales_count || 0
+        }))
+        setCps(mappedCPs)
       }
       
-      if (storedSales) {
-        setSales(JSON.parse(storedSales))
-      } else {
-        const mockSales = [
-          { id: 1, rmId: rm.id, rmName: rm.name, cpId: 1, cpName: 'Tech Solutions', amount: 50000, date: '2024-03-15', status: 'completed' },
-          { id: 2, rmId: rm.id, rmName: rm.name, cpId: 2, cpName: 'Digital Innovations', amount: 35000, date: '2024-03-18', status: 'completed' }
-        ]
-        setSales(mockSales)
-        localStorage.setItem(`sales_${rmId}`, JSON.stringify(mockSales))
+      const { data: salesData, error: salesError } = await supabase
+        .from('sales')
+        .select('*, channel_partners(name)')
+        .eq('rm_id', parseInt(rmId))
+      
+      if (!salesError && salesData) {
+        const mappedSales = salesData.map(sale => ({
+          id: sale.id,
+          rmId: sale.rm_id,
+          rmName: rm.name,
+          cpId: sale.cp_id,
+          cpName: sale.channel_partners?.name || 'Unknown',
+          amount: sale.amount,
+          date: sale.sale_date,
+          status: sale.status
+        }))
+        setSales(mappedSales)
       }
       
       setLoading(false)
     } catch (error) {
       console.error('Error loading RM data:', error)
+      setErrorMessage('Error loading data. Please contact support.')
       setLoading(false)
     }
   }
@@ -202,6 +261,64 @@ const RMDashboard = ({ rmId, onLogout }) => {
     loadMeetingStats()
     setSuccessMessage('Meeting scheduled successfully!')
     setTimeout(() => setSuccessMessage(''), 3000)
+  }
+
+  const handleAddCP = async (cpData) => {
+    setSaving(true)
+    
+    try {
+      const { data, error } = await supabase
+        .from('channel_partners')
+        .insert([{
+          name: cpData.name,
+          rm_id: parseInt(rmId),
+          status: cpData.status || 'active',
+          onboarded_date: new Date().toISOString().split('T')[0]
+        }])
+        .select()
+      
+      if (error) throw error
+      
+      setSuccessMessage('CP added successfully!')
+      setTimeout(() => setSuccessMessage(''), 3000)
+      await loadRMData()
+      
+    } catch (error) {
+      console.error('Error adding CP:', error)
+      setErrorMessage('Error adding CP: ' + error.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleAddSale = async (saleData) => {
+    setSaving(true)
+    
+    try {
+      const { data, error } = await supabase
+        .from('sales')
+        .insert([{
+          rm_id: parseInt(rmId),
+          cp_id: parseInt(saleData.cpId),
+          amount: parseInt(saleData.amount),
+          sale_date: saleData.date,
+          payment_mode: 'UPI',
+          status: 'completed'
+        }])
+        .select()
+      
+      if (error) throw error
+      
+      setSuccessMessage('Sale added successfully!')
+      setTimeout(() => setSuccessMessage(''), 3000)
+      await loadRMData()
+      
+    } catch (error) {
+      console.error('Error adding sale:', error)
+      setErrorMessage('Error adding sale: ' + error.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const styles = {
@@ -361,7 +478,12 @@ const RMDashboard = ({ rmId, onLogout }) => {
           {showCPForm && (
             <div style={styles.modalOverlay} onClick={() => setShowCPForm(false)}>
               <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-                <CPOnboardingForm rmId={rmId} rmName={rmData.name} onClose={() => setShowCPForm(false)} onSuccess={() => { loadRMData(); setShowCPForm(false); }} />
+                <CPOnboardingForm 
+                  rmId={rmId} 
+                  rmName={rmData.name} 
+                  onClose={() => setShowCPForm(false)} 
+                  onSuccess={handleAddCP} 
+                />
               </div>
             </div>
           )}
@@ -388,7 +510,13 @@ const RMDashboard = ({ rmId, onLogout }) => {
           {showSaleForm && (
             <div style={styles.modalOverlay} onClick={() => setShowSaleForm(false)}>
               <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-                <AddSaleForm rmId={rmId} rmName={rmData.name} cps={cps} onClose={() => setShowSaleForm(false)} onSuccess={() => { loadRMData(); setShowSaleForm(false); }} />
+                <AddSaleForm 
+                  rmId={rmId} 
+                  rmName={rmData.name} 
+                  cps={cps} 
+                  onClose={() => setShowSaleForm(false)} 
+                  onSuccess={handleAddSale} 
+                />
               </div>
             </div>
           )}
