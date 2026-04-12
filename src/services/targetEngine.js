@@ -1,9 +1,10 @@
-export function generateSmartTargets({ current, targetRevenue, daysLeft }) {
-
-    const revenueGap = Math.max((targetRevenue || 0) - (current.revenue || 0), 0)
+export function generateSmartTargets({
+    current = {},
+    targetRevenue = 0,
+    daysLeft = 1
+  }) {
   
-    // 🔥 fallback if no target
-    if (!targetRevenue || targetRevenue === 0) {
+    if (!targetRevenue || targetRevenue <= 0) {
       return {
         revenue: 0,
         sales: 0,
@@ -13,16 +14,29 @@ export function generateSmartTargets({ current, targetRevenue, daysLeft }) {
       }
     }
   
-    const dailyRevenueNeeded = revenueGap / daysLeft
+    const effectiveDays = Math.max(daysLeft, 1)
   
-    const avgDealValue = current.sales > 0
-      ? current.revenue / current.sales
-      : 50000   // 🔥 fallback assumption
+    // 🔥 DAILY TARGET
+    const dailyRevenueNeeded = targetRevenue / effectiveDays
   
-    const dealsNeeded = Math.ceil(dailyRevenueNeeded / avgDealValue)
+    // 🔥 FIXED AVG DEAL (CONTROLLED)
+    let avgDealValue = 1000000   // 👉 HARD BASE: 10L
   
-    const meetingsNeeded = dealsNeeded * 3
-    const cpNeeded = Math.ceil(meetingsNeeded / 2)
+    if (current.sales > 0 && current.revenue > 0) {
+      avgDealValue = current.revenue / current.sales
+    }
+  
+    // 🚨 CRITICAL FIX (CAP RANGE)
+    avgDealValue = Math.min(Math.max(avgDealValue, 300000), 2000000)
+  
+    // 🔥 DEAL CALC
+    let dealsNeeded = dailyRevenueNeeded / avgDealValue
+  
+    // ✅ FORCE REAL OUTPUT
+    dealsNeeded = Math.max(1, Math.ceil(dealsNeeded))
+  
+    const meetingsNeeded = Math.max(3, Math.ceil(dealsNeeded * 3))
+    const cpNeeded = Math.max(2, Math.ceil(meetingsNeeded / 2))
   
     return {
       revenue: Math.ceil(dailyRevenueNeeded),
@@ -32,3 +46,4 @@ export function generateSmartTargets({ current, targetRevenue, daysLeft }) {
       activeCP: Math.ceil(cpNeeded * 0.7)
     }
   }
+  

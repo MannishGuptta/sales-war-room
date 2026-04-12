@@ -49,7 +49,7 @@ email: profile.email
 /* STEP 4: REDIRECT */
 
 if(profile.role === "admin"){
-navigate("/admin")
+navigate("/war-room")
 }else{
 navigate("/rm-dashboard")
 }

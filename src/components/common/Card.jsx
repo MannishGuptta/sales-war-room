@@ -17,3 +17,4 @@ export default function Card({title,value,children}){
     marginBottom:20,
     boxShadow:"0 2px 10px rgba(0,0,0,0.1)"
     }
+    

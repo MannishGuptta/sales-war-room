@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { mockData } from '../data/mockData'
 
+/* eslint-disable no-unused-vars */
+/* eslint-disable react-hooks/exhaustive-deps */
+
 const RMTable = ({ rms, onRMSummaryClick }) => {
   const [isMobile, setIsMobile] = useState(false)
   const [expandedRM, setExpandedRM] = useState(null)

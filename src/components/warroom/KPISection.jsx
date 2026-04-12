@@ -1,37 +1,38 @@
 import React from "react";
 
 export default function KPISection({
-  revenueToday,
-  revenueMonth,
-  totalSales,
-  meetingsToday
+  period,
+  revenue,
+  sales,
+  meetings,
+  cpOnboard
 }) {
 
   return (
 
     <>
-      <h2>Executive Dashboard</h2>
+      <h2>Executive Dashboard ({period})</h2>
 
       <div style={grid}>
 
         <div style={card}>
-          <h3>Revenue Today</h3>
-          <h1>₹ {revenueToday.toLocaleString()}</h1>
-        </div>
-
-        <div style={card}>
-          <h3>Revenue This Month</h3>
-          <h1>₹ {revenueMonth.toLocaleString()}</h1>
+          <h3>Revenue</h3>
+          <h1>₹ {Number(revenue || 0).toLocaleString()}</h1>
         </div>
 
         <div style={card}>
           <h3>Total Sales</h3>
-          <h1>{totalSales}</h1>
+          <h1>{sales || 0}</h1>
         </div>
 
         <div style={card}>
-          <h3>Meetings Today</h3>
-          <h1>{meetingsToday}</h1>
+          <h3>Meetings</h3>
+          <h1>{meetings || 0}</h1>
+        </div>
+
+        <div style={card}>
+          <h3>CP Onboarded</h3>
+          <h1>{cpOnboard || 0}</h1>
         </div>
 
       </div>

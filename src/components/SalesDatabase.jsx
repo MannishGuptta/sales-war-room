@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 
+/* eslint-disable react-hooks/exhaustive-deps */
+
 const SalesDatabase = ({ rmId, rmName, onClose }) => {
   const [sales, setSales] = useState([])
   const [filterStatus, setFilterStatus] = useState('all')

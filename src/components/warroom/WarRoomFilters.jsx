@@ -28,7 +28,10 @@ onChange={(e)=>setSelectedRM(e.target.value)}
 
 <option value="all">All RMs</option>
 
-(rmLeaderboard || []).map(...)
+{(rmLeaderboard || []).map((rm,index)=>(
+<option key={index} value={rm.rm_id || rm.name}>
+{rm.name}
+</option>
 ))}
 
 </select>
