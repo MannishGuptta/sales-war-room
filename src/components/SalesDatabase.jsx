@@ -1,49 +1,56 @@
-import { useState, useEffect } from 'react'
-
-/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable */
+import { useState, useEffect } from 'react';
+import { supabase } from '../supabaseClient';
 
 const SalesDatabase = ({ rmId, rmName, onClose }) => {
-  const [sales, setSales] = useState([])
-  const [filterStatus, setFilterStatus] = useState('all')
-  const [dateRange, setDateRange] = useState({ start: '', end: '' })
-  const [totalAmount, setTotalAmount] = useState(0)
+  const [sales, setSales] = useState([]);
+  const [rms, setRms] = useState([]);
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  const [totalAmount, setTotalAmount] = useState(0);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    loadSales()
-  }, [rmId])
+    loadSales();
+    loadRms();
+  }, [rmId]);
 
-  const loadSales = () => {
-    let allSales = []
-    
-    if (rmId === 'all') {
-      const storedRMs = localStorage.getItem('rms') || '[]'
-      const rmsList = JSON.parse(storedRMs)
-      rmsList.forEach(rm => {
-        const storedSales = localStorage.getItem(`sales_${rm.id}`)
-        if (storedSales) {
-          const salesData = JSON.parse(storedSales)
-          allSales.push(...salesData.map(s => ({ ...s, rmName: rm.name })))
-        }
-      })
-    } else {
-      const storedSales = localStorage.getItem(`sales_${rmId}`)
-      if (storedSales) {
-        allSales = JSON.parse(storedSales)
-      } else {
-        const mockSales = [
-          { id: 1, cpId: 1, cpName: 'Tech Solutions', amount: 50000, date: '2024-03-15', status: 'completed', paymentMode: 'UPI', invoiceNo: 'INV-001' },
-          { id: 2, cpId: 2, cpName: 'Digital Innovations', amount: 35000, date: '2024-03-18', status: 'completed', paymentMode: 'Bank Transfer', invoiceNo: 'INV-002' },
-          { id: 3, cpId: 1, cpName: 'Tech Solutions', amount: 25000, date: '2024-03-20', status: 'pending', paymentMode: 'Cheque', invoiceNo: 'INV-003' }
-        ]
-        allSales = mockSales
-        localStorage.setItem(`sales_${rmId}`, JSON.stringify(mockSales))
+  const loadRms = async () => {
+    const { data } = await supabase.from('rms').select('id, name');
+    if (data) setRms(data);
+  };
+
+  const loadSales = async () => {
+    setLoading(true);
+    try {
+      let query = supabase.from('sales').select('*');
+      
+      if (rmId !== 'all') {
+        query = query.eq('rm_id', rmId);
       }
+      
+      const { data, error } = await query.order('date', { ascending: false });
+      
+      if (error) throw error;
+      
+      // Add RM names to sales
+      const salesWithRmNames = await Promise.all((data || []).map(async (sale) => {
+        if (sale.rm_id) {
+          const { data: rmData } = await supabase.from('rms').select('name').eq('id', sale.rm_id).single();
+          return { ...sale, rmName: rmData?.name || 'Unknown' };
+        }
+        return { ...sale, rmName: rmName || 'Unknown' };
+      }));
+      
+      setSales(salesWithRmNames);
+      const total = salesWithRmNames.reduce((sum, sale) => sum + (sale.amount || 0), 0);
+      setTotalAmount(total);
+    } catch (error) {
+      console.error('Error loading sales:', error);
+    } finally {
+      setLoading(false);
     }
-    
-    setSales(allSales.sort((a, b) => new Date(b.date) - new Date(a.date)))
-    const total = allSales.reduce((sum, sale) => sum + sale.amount, 0)
-    setTotalAmount(total)
-  }
+  };
 
   const formatRupees = (amount) => {
     return new Intl.NumberFormat('en-IN', {
@@ -51,22 +58,22 @@ const SalesDatabase = ({ rmId, rmName, onClose }) => {
       currency: 'INR',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
-    }).format(amount)
-  }
+    }).format(amount || 0);
+  };
 
   const filteredSales = sales.filter(sale => {
-    if (filterStatus !== 'all' && sale.status !== filterStatus) return false
-    if (dateRange.start && sale.date < dateRange.start) return false
-    if (dateRange.end && sale.date > dateRange.end) return false
-    return true
-  })
+    if (filterStatus !== 'all' && sale.status !== filterStatus) return false;
+    if (dateRange.start && sale.date < dateRange.start) return false;
+    if (dateRange.end && sale.date > dateRange.end) return false;
+    return true;
+  });
 
   const styles = {
     container: {
       background: 'white',
       borderRadius: '12px',
       padding: '24px',
-      maxWidth: '1000px',
+      maxWidth: '1200px',
       margin: '0 auto',
       boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
     },
@@ -93,20 +100,38 @@ const SalesDatabase = ({ rmId, rmName, onClose }) => {
     td: { border: '1px solid #ddd', padding: '10px', fontSize: '14px' },
     statusBadge: { display: 'inline-block', padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold' },
     completedBadge: { background: '#d4edda', color: '#155724' },
-    pendingBadge: { background: '#fff3cd', color: '#856404' }
+    pendingBadge: { background: '#fff3cd', color: '#856404' },
+    loadingText: { textAlign: 'center', padding: '40px', color: '#666' }
+  };
+
+  if (loading) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.loadingText}>Loading sales data...</div>
+      </div>
+    );
   }
 
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <h2 style={styles.title}>💰 Sales Database</h2>
+        <h2 style={styles.title}>💰 Sales Database {rmName ? `- ${rmName}` : ''}</h2>
         <button onClick={onClose} style={styles.closeBtn}>Close</button>
       </div>
 
       <div style={styles.statsGrid}>
-        <div style={styles.statCard}><div style={{ fontSize: '28px', fontWeight: 'bold' }}>{sales.length}</div><div>Total Sales</div></div>
-        <div style={styles.statCard}><div style={{ fontSize: '28px', fontWeight: 'bold' }}>{formatRupees(totalAmount)}</div><div>Total Revenue</div></div>
-        <div style={styles.statCard}><div style={{ fontSize: '28px', fontWeight: 'bold' }}>{sales.filter(s => s.status === 'completed').length}</div><div>Completed</div></div>
+        <div style={styles.statCard}>
+          <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{sales.length}</div>
+          <div>Total Sales</div>
+        </div>
+        <div style={styles.statCard}>
+          <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{formatRupees(totalAmount)}</div>
+          <div>Total Revenue</div>
+        </div>
+        <div style={styles.statCard}>
+          <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{sales.filter(s => s.status === 'completed').length}</div>
+          <div>Completed</div>
+        </div>
       </div>
 
       <div style={styles.filters}>
@@ -115,8 +140,20 @@ const SalesDatabase = ({ rmId, rmName, onClose }) => {
           <option value="completed">Completed</option>
           <option value="pending">Pending</option>
         </select>
-        <input type="date" style={styles.input} value={dateRange.start} onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })} />
-        <input type="date" style={styles.input} value={dateRange.end} onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })} />
+        <input 
+          type="date" 
+          style={styles.input} 
+          value={dateRange.start} 
+          onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })} 
+          placeholder="Start Date"
+        />
+        <input 
+          type="date" 
+          style={styles.input} 
+          value={dateRange.end} 
+          onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })} 
+          placeholder="End Date"
+        />
       </div>
 
       <div style={{ overflowX: 'auto' }}>
@@ -136,28 +173,33 @@ const SalesDatabase = ({ rmId, rmName, onClose }) => {
             {filteredSales.map(sale => (
               <tr key={sale.id}>
                 {rmId === 'all' && <td style={styles.td}>{sale.rmName || '-'}</td>}
-                <td style={styles.td}>{sale.cpName}</td>
+                <td style={styles.td}>{sale.cp_name || sale.cpName || '-'}</td>
                 <td style={styles.td}>{formatRupees(sale.amount)}</td>
                 <td style={styles.td}>{sale.date}</td>
-                <td style={styles.td}>{sale.paymentMode || '-'}</td>
-                <td style={styles.td}>{sale.invoiceNo || '-'}</td>
+                <td style={styles.td}>{sale.payment_mode || sale.paymentMode || '-'}</td>
+                <td style={styles.td}>{sale.invoice_no || sale.invoiceNo || '-'}</td>
                 <td style={styles.td}>
-                  <span style={{ ...styles.statusBadge, ...(sale.status === 'completed' ? styles.completedBadge : styles.pendingBadge) }}>
-                    {sale.status}
+                  <span style={{ 
+                    ...styles.statusBadge, 
+                    ...(sale.status === 'completed' ? styles.completedBadge : styles.pendingBadge) 
+                  }}>
+                    {sale.status || 'pending'}
                   </span>
                 </td>
-              </tr>
+              </table>
             ))}
             {filteredSales.length === 0 && (
               <tr>
-                <td colSpan={rmId === 'all' ? 7 : 6} style={{ textAlign: 'center', padding: '40px' }}>No sales records found</td>
+                <td colSpan={rmId === 'all' ? 7 : 6} style={{ textAlign: 'center', padding: '40px' }}>
+                  No sales records found
+                </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default SalesDatabase
+export default SalesDatabase;
