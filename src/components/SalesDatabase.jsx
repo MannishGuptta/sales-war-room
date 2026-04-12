@@ -4,7 +4,6 @@ import { supabase } from '../supabaseClient';
 
 const SalesDatabase = ({ rmId, rmName, onClose }) => {
   const [sales, setSales] = useState([]);
-  const [rms, setRms] = useState([]);
   const [filterStatus, setFilterStatus] = useState('all');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [totalAmount, setTotalAmount] = useState(0);
@@ -12,38 +11,19 @@ const SalesDatabase = ({ rmId, rmName, onClose }) => {
 
   useEffect(() => {
     loadSales();
-    loadRms();
   }, [rmId]);
-
-  const loadRms = async () => {
-    const { data } = await supabase.from('rms').select('id, name');
-    if (data) setRms(data);
-  };
 
   const loadSales = async () => {
     setLoading(true);
     try {
       let query = supabase.from('sales').select('*');
-      
       if (rmId !== 'all') {
         query = query.eq('rm_id', rmId);
       }
-      
       const { data, error } = await query.order('date', { ascending: false });
-      
       if (error) throw error;
-      
-      // Add RM names to sales
-      const salesWithRmNames = await Promise.all((data || []).map(async (sale) => {
-        if (sale.rm_id) {
-          const { data: rmData } = await supabase.from('rms').select('name').eq('id', sale.rm_id).single();
-          return { ...sale, rmName: rmData?.name || 'Unknown' };
-        }
-        return { ...sale, rmName: rmName || 'Unknown' };
-      }));
-      
-      setSales(salesWithRmNames);
-      const total = salesWithRmNames.reduce((sum, sale) => sum + (sale.amount || 0), 0);
+      setSales(data || []);
+      const total = (data || []).reduce((sum, sale) => sum + (sale.amount || 0), 0);
       setTotalAmount(total);
     } catch (error) {
       console.error('Error loading sales:', error);
@@ -56,8 +36,7 @@ const SalesDatabase = ({ rmId, rmName, onClose }) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
+      minimumFractionDigits: 0
     }).format(amount || 0);
   };
 
@@ -68,131 +47,73 @@ const SalesDatabase = ({ rmId, rmName, onClose }) => {
     return true;
   });
 
-  const styles = {
-    container: {
-      background: 'white',
-      borderRadius: '12px',
-      padding: '24px',
-      maxWidth: '1200px',
-      margin: '0 auto',
-      boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
-    },
-    header: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: '20px',
-      paddingBottom: '16px',
-      borderBottom: '2px solid #f0f0f0'
-    },
-    title: { fontSize: '24px', fontWeight: 'bold', color: '#333', margin: 0 },
-    closeBtn: {
-      background: '#dc3545', color: 'white', border: 'none',
-      padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold'
-    },
-    statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', marginBottom: '20px' },
-    statCard: { background: 'linear-gradient(135deg, #28a745 0%, #20c997 100%)', color: 'white', padding: '15px', borderRadius: '8px', textAlign: 'center' },
-    filters: { display: 'flex', gap: '15px', marginBottom: '20px', flexWrap: 'wrap' },
-    select: { padding: '8px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px' },
-    input: { padding: '8px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px' },
-    table: { width: '100%', borderCollapse: 'collapse' },
-    th: { border: '1px solid #ddd', padding: '12px', background: '#f8f9fa', textAlign: 'left', fontWeight: 'bold', fontSize: '14px' },
-    td: { border: '1px solid #ddd', padding: '10px', fontSize: '14px' },
-    statusBadge: { display: 'inline-block', padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold' },
-    completedBadge: { background: '#d4edda', color: '#155724' },
-    pendingBadge: { background: '#fff3cd', color: '#856404' },
-    loadingText: { textAlign: 'center', padding: '40px', color: '#666' }
-  };
-
-  if (loading) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.loadingText}>Loading sales data...</div>
-      </div>
-    );
-  }
-
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <h2 style={styles.title}>💰 Sales Database {rmName ? `- ${rmName}` : ''}</h2>
-        <button onClick={onClose} style={styles.closeBtn}>Close</button>
+    <div style={{ background: 'white', borderRadius: '12px', padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+        <h2>💰 Sales Database {rmName ? `- ${rmName}` : ''}</h2>
+        <button onClick={onClose} style={{ background: '#dc3545', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Close</button>
       </div>
 
-      <div style={styles.statsGrid}>
-        <div style={styles.statCard}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '20px' }}>
+        <div style={{ background: '#28a745', color: 'white', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
           <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{sales.length}</div>
           <div>Total Sales</div>
         </div>
-        <div style={styles.statCard}>
+        <div style={{ background: '#28a745', color: 'white', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
           <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{formatRupees(totalAmount)}</div>
           <div>Total Revenue</div>
         </div>
-        <div style={styles.statCard}>
+        <div style={{ background: '#28a745', color: 'white', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
           <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{sales.filter(s => s.status === 'completed').length}</div>
           <div>Completed</div>
         </div>
       </div>
 
-      <div style={styles.filters}>
-        <select style={styles.select} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+      <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
+        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ padding: '8px', border: '1px solid #ddd', borderRadius: '6px' }}>
           <option value="all">All Status</option>
           <option value="completed">Completed</option>
           <option value="pending">Pending</option>
         </select>
-        <input 
-          type="date" 
-          style={styles.input} 
-          value={dateRange.start} 
-          onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })} 
-          placeholder="Start Date"
-        />
-        <input 
-          type="date" 
-          style={styles.input} 
-          value={dateRange.end} 
-          onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })} 
-          placeholder="End Date"
-        />
+        <input type="date" value={dateRange.start} onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })} style={{ padding: '8px', border: '1px solid #ddd', borderRadius: '6px' }} />
+        <input type="date" value={dateRange.end} onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })} style={{ padding: '8px', border: '1px solid #ddd', borderRadius: '6px' }} />
       </div>
 
       <div style={{ overflowX: 'auto' }}>
-        <table style={styles.table}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr>
-              {rmId === 'all' && <th style={styles.th}>RM Name</th>}
-              <th style={styles.th}>CP Name</th>
-              <th style={styles.th}>Amount</th>
-              <th style={styles.th}>Date</th>
-              <th style={styles.th}>Payment Mode</th>
-              <th style={styles.th}>Invoice No</th>
-              <th style={styles.th}>Status</th>
+            <tr style={{ background: '#f8f9fa' }}>
+              {rmId === 'all' && <th style={{ border: '1px solid #ddd', padding: '12px' }}>RM Name</th>}
+              <th style={{ border: '1px solid #ddd', padding: '12px' }}>CP Name</th>
+              <th style={{ border: '1px solid #ddd', padding: '12px' }}>Amount</th>
+              <th style={{ border: '1px solid #ddd', padding: '12px' }}>Date</th>
+              <th style={{ border: '1px solid #ddd', padding: '12px' }}>Payment Mode</th>
+              <th style={{ border: '1px solid #ddd', padding: '12px' }}>Status</th>
             </tr>
           </thead>
           <tbody>
             {filteredSales.map(sale => (
               <tr key={sale.id}>
-                {rmId === 'all' && <td style={styles.td}>{sale.rmName || '-'}</td>}
-                <td style={styles.td}>{sale.cp_name || sale.cpName || '-'}</td>
-                <td style={styles.td}>{formatRupees(sale.amount)}</td>
-                <td style={styles.td}>{sale.date}</td>
-                <td style={styles.td}>{sale.payment_mode || sale.paymentMode || '-'}</td>
-                <td style={styles.td}>{sale.invoice_no || sale.invoiceNo || '-'}</td>
-                <td style={styles.td}>
+                {rmId === 'all' && <td style={{ border: '1px solid #ddd', padding: '10px' }}>{sale.rm_id || '-'}</td>}
+                <td style={{ border: '1px solid #ddd', padding: '10px' }}>{sale.cp_name || sale.cpName || '-'}</td>
+                <td style={{ border: '1px solid #ddd', padding: '10px' }}>{formatRupees(sale.amount)}</td>
+                <td style={{ border: '1px solid #ddd', padding: '10px' }}>{sale.date}</td>
+                <td style={{ border: '1px solid #ddd', padding: '10px' }}>{sale.payment_mode || sale.paymentMode || '-'}</td>
+                <td style={{ border: '1px solid #ddd', padding: '10px' }}>
                   <span style={{ 
-                    ...styles.statusBadge, 
-                    ...(sale.status === 'completed' ? styles.completedBadge : styles.pendingBadge) 
+                    padding: '4px 10px', 
+                    borderRadius: '20px', 
+                    background: sale.status === 'completed' ? '#d4edda' : '#fff3cd',
+                    color: sale.status === 'completed' ? '#155724' : '#856404'
                   }}>
                     {sale.status || 'pending'}
                   </span>
                 </td>
-              </table>
+              </tr>
             ))}
             {filteredSales.length === 0 && (
               <tr>
-                <td colSpan={rmId === 'all' ? 7 : 6} style={{ textAlign: 'center', padding: '40px' }}>
-                  No sales records found
-                </td>
+                <td colSpan={rmId === 'all' ? 6 : 5} style={{ textAlign: 'center', padding: '40px' }}>No sales records found</td>
               </tr>
             )}
           </tbody>
