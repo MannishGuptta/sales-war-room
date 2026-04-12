@@ -12,6 +12,7 @@ import TLTargetManagement from '../components/TLTargetManagement';
 import ChangePassword from '../components/ChangePassword';
 import WeeklyProgress from '../components/WeeklyProgress';
 import { loadWarRoomData } from '../services/loadWarRoomData';
+import { supabase } from '../supabaseClient';
 
 const WarRoom = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -40,13 +41,6 @@ const WarRoom = ({ onLogout }) => {
     setShowWeeklyProgress(false);
     setSelectedRM(null);
   };
-
-  // Add this to test Supabase connection
-const testSupabase = async () => {
-  const { data, error } = await supabase.from('rms').select('*');
-  console.log('Supabase test:', { data, error });
-};
-testSupabase();
 
   // ✅ CRITICAL FIX: Render different components based on activeTab
   const renderContent = () => {
